@@ -304,7 +304,7 @@ export const LessonPlanView: React.FC<LessonPlanViewProps> = ({
           }`}
         >
           <Brain className="w-3.5 h-3.5" />
-          <span>🟢 Beginner Scaffold ("Plant Kitchen")</span>
+          <span>🟢 Beginner Scaffold ({lessonPlan.topic.toLowerCase().includes('photosynthesis') ? '"Plant Kitchen"' : (lessonPlan.topic.toLowerCase().includes('tcp') ? '"Water Pipe"' : '"Mental Model"')})</span>
           <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-white/20 text-white font-bold">
             3 At-Risk
           </span>
@@ -319,7 +319,7 @@ export const LessonPlanView: React.FC<LessonPlanViewProps> = ({
           }`}
         >
           <Flame className="w-3.5 h-3.5" />
-          <span>🟣 Advanced Inquiry (Calvin Cycle)</span>
+          <span>🟣 Advanced Inquiry ({lessonPlan.topic.toLowerCase().includes('photosynthesis') ? 'Calvin Cycle' : (lessonPlan.advancedActivity?.title ? lessonPlan.advancedActivity.title.slice(0, 18) + '...' : 'Extension')})</span>
         </button>
 
         <button
@@ -330,8 +330,8 @@ export const LessonPlanView: React.FC<LessonPlanViewProps> = ({
               : 'btn-3d-white text-slate-700'
           }`}
         >
-          <Eye className="w-3.5 h-3.5" />
-          <span>🖼️ Visual Diagram & Hotspots</span>
+          <Layers className="w-3.5 h-3.5" />
+          <span>📊 Flowchart & Pipeline Architecture</span>
         </button>
 
         <button
@@ -776,7 +776,7 @@ export const LessonPlanView: React.FC<LessonPlanViewProps> = ({
         </div>
       )}
 
-      {/* Tab 4: Visual Diagram & Interactive Hotspots */}
+      {/* Tab 4: Visual Diagram & Flowchart Pipeline */}
       {activeSubTab === 'diagram' && (
         <div className="space-y-4">
           <div className="rounded-xl bg-white border border-slate-200 p-5 space-y-4 shadow-xs">
@@ -784,49 +784,104 @@ export const LessonPlanView: React.FC<LessonPlanViewProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-                  <Eye className="w-4 h-4 text-sky-600" />
+                  <Layers className="w-4 h-4 text-sky-600" />
                   <span>{lessonPlan.visualDiagram.title}</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  High-resolution grounded scientific infographic. Click any hotspot label to inspect mechanics.
+                  Interactive directed flowchart pipeline. Click any stage node to inspect algorithm invariants, data structures, and mechanics.
                 </p>
               </div>
 
-              <span className="text-xs px-3 py-1 rounded-full bg-sky-50 text-sky-800 border border-sky-200 font-bold self-start sm:self-auto">
-                Agnes AI Visual Grounding
+              <span className="text-xs px-3 py-1 rounded-full bg-sky-50 text-sky-800 border border-sky-200 font-bold self-start sm:self-auto flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                <span>Ollama Live Flowchart DAG</span>
               </span>
             </div>
 
-            {/* High Res Image Container with Interactive Hotspots */}
-            <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 shadow-md group">
-              <img
-                src={lessonPlan.visualDiagram.imageUrl}
-                alt="Photosynthesis Process Diagram"
-                className="w-full h-auto object-cover max-h-[520px]"
-              />
+            {/* If Photosynthesis, render biological infographic; otherwise render interactive directed flowchart DAG */}
+            {lessonPlan.topic.toLowerCase().includes('photosynthesis') && lessonPlan.visualDiagram.imageUrl ? (
+              <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 shadow-md group">
+                <img
+                  src={lessonPlan.visualDiagram.imageUrl}
+                  alt={lessonPlan.visualDiagram.title}
+                  className="w-full h-auto object-cover max-h-[520px]"
+                />
+                {lessonPlan.visualDiagram.hotspots.map((h, i) => {
+                  const isSelected = selectedHotspot === i;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedHotspot(i)}
+                      style={{ top: `${h.y}%`, left: `${h.x}%` }}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full transition-all duration-300 cursor-pointer ${
+                        isSelected
+                          ? 'w-7 h-7 bg-sky-600 text-white ring-4 ring-sky-300 scale-125 z-20 font-bold shadow-md'
+                          : 'w-6 h-6 bg-white/95 text-sky-800 border border-sky-500/80 hover:scale-110 z-10 font-bold shadow-sm'
+                      }`}
+                    >
+                      <span className="text-[11px] font-black">{i + 1}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-5 sm:p-6 text-white shadow-xl overflow-x-auto">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs font-mono uppercase tracking-wider text-slate-300 font-bold">
+                      Directed Problem-Solving Pipeline (5 Stages)
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-sky-300 font-mono">
+                    Click any stage to inspect algorithm invariants
+                  </span>
+                </div>
 
-              {/* Hotspots overlay */}
-              {lessonPlan.visualDiagram.hotspots.map((h, i) => {
-                const isSelected = selectedHotspot === i;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedHotspot(i)}
-                    style={{ top: `${h.y}%`, left: `${h.x}%` }}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full transition-all duration-300 cursor-pointer ${
-                      isSelected
-                        ? 'w-7 h-7 bg-sky-600 text-white ring-4 ring-sky-300 scale-125 z-20 font-bold shadow-md'
-                        : 'w-6 h-6 bg-white/95 text-sky-800 border border-sky-500/80 hover:scale-110 z-10 font-bold shadow-sm'
-                    }`}
-                  >
-                    <span className="text-[11px] font-black">{i + 1}</span>
-                  </button>
-                );
-              })}
-            </div>
+                <div className="flex items-center justify-between min-w-[700px] gap-2 py-3">
+                  {lessonPlan.visualDiagram.hotspots.map((h, i) => {
+                    const isSelected = selectedHotspot === i;
+                    return (
+                      <React.Fragment key={i}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedHotspot(i)}
+                          className={`flex-1 text-left p-3.5 rounded-xl border transition-all cursor-pointer relative ${
+                            isSelected
+                              ? 'bg-sky-600 text-white border-sky-300 ring-4 ring-sky-400/40 shadow-lg scale-105 z-10'
+                              : 'bg-white/10 hover:bg-white/15 text-slate-200 border-white/10'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`text-[10px] font-black font-mono px-1.5 py-0.5 rounded ${
+                              isSelected ? 'bg-white text-sky-900' : 'bg-sky-500/30 text-sky-300'
+                            }`}>
+                              STAGE {i + 1}
+                            </span>
+                            <span className="text-[10px] text-slate-400">{i < 4 ? '➔' : '✓'}</span>
+                          </div>
+                          <div className="text-xs font-bold leading-tight">
+                            {h.label}
+                          </div>
+                          <div className="text-[10px] opacity-80 mt-1 line-clamp-2">
+                            {h.description}
+                          </div>
+                        </button>
 
-            {/* Selected Hotspot Detailed Card */}
-            {selectedHotspot !== null && (
+                        {i < lessonPlan.visualDiagram.hotspots.length - 1 && (
+                          <div className="shrink-0 flex items-center justify-center text-sky-400 font-bold text-sm px-1">
+                            <ArrowRight className="w-4 h-4 animate-pulse text-sky-400" />
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Selected Hotspot Detailed Inspector Card */}
+            {selectedHotspot !== null && lessonPlan.visualDiagram.hotspots[selectedHotspot] && (
               <div className="p-4 rounded-xl bg-slate-50 border border-sky-300 space-y-2 shadow-xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -836,11 +891,15 @@ export const LessonPlanView: React.FC<LessonPlanViewProps> = ({
                     <h4 className="text-sm font-bold text-slate-900">
                       {lessonPlan.visualDiagram.hotspots[selectedHotspot].label}
                     </h4>
-                    <span className="text-xs text-sky-800 font-sans font-bold">
-                      ({lessonPlan.visualDiagram.hotspots[selectedHotspot].hindiLabel})
-                    </span>
+                    {lessonPlan.visualDiagram.hotspots[selectedHotspot].hindiLabel && (
+                      <span className="text-xs text-sky-800 font-sans font-bold">
+                        ({lessonPlan.visualDiagram.hotspots[selectedHotspot].hindiLabel})
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[10px] text-slate-500 uppercase font-mono font-bold">Annotated Region</span>
+                  <span className="text-[10px] text-sky-800 bg-sky-100 border border-sky-300 px-2 py-0.5 rounded font-mono font-bold">
+                    Flowchart Stage Invariant
+                  </span>
                 </div>
                 <p className="text-xs text-slate-700 leading-relaxed font-medium">
                   {lessonPlan.visualDiagram.hotspots[selectedHotspot].description}

@@ -33,23 +33,35 @@ class CurriculumStateManager {
 
   private loadInitialState(): CurriculumSelectionState {
     try {
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return getDefaultCurriculumSelection();
+      }
       const saved = localStorage.getItem(this.storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        const univ = UNIVERSITIES_DATABASE.find(u => u.id === parsed.universityId) || UNIVERSITIES_DATABASE[0];
-        const scheme = univ.schemes.find(s => s.id === parsed.schemeId) || univ.schemes[0];
-        const branchSem = scheme.branchSemesters.find(b => b.id === parsed.branchSemId) || scheme.branchSemesters[0];
-        const subject = branchSem.subjects.find(s => s.id === parsed.subjectId) || branchSem.subjects[0];
-        return { university: univ, scheme, branchSem, subject };
+        const univ = UNIVERSITIES_DATABASE.find(u => u.id === parsed?.universityId) || UNIVERSITIES_DATABASE[0];
+        const scheme = univ?.schemes?.find(s => s.id === parsed?.schemeId) || univ?.schemes?.[0];
+        const branchSem = scheme?.branchSemesters?.find(b => b.id === parsed?.branchSemId) || scheme?.branchSemesters?.[0];
+        const subject = branchSem?.subjects?.find(s => s.id === parsed?.subjectId) || branchSem?.subjects?.[0];
+        if (univ && scheme && branchSem && subject) {
+          return { university: univ, scheme, branchSem, subject };
+        }
       }
     } catch (e) {
       console.warn('Failed to load saved curriculum state, defaulting to VTU 2025:', e);
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(this.storageKey);
+        }
+      } catch {}
     }
     return getDefaultCurriculumSelection();
   }
 
   private saveState() {
     try {
+      if (typeof localStorage === 'undefined') return;
+      if (!this.state?.university || !this.state?.scheme || !this.state?.branchSem || !this.state?.subject) return;
       localStorage.setItem(this.storageKey, JSON.stringify({
         universityId: this.state.university.id,
         schemeId: this.state.scheme.id,
@@ -62,15 +74,21 @@ class CurriculumStateManager {
   }
 
   public getState(): CurriculumSelectionState {
+    if (!this.state || !this.state.subject) {
+      this.state = getDefaultCurriculumSelection();
+    }
     return this.state;
   }
 
   public setUniversity(universityId: string) {
-    const university = UNIVERSITIES_DATABASE.find(u => u.id === universityId);
+    const university = UNIVERSITIES_DATABASE.find(u => u.id === universityId) || UNIVERSITIES_DATABASE[0];
     if (!university) return;
-    const scheme = university.schemes[0];
-    const branchSem = scheme.branchSemesters[0];
-    const subject = branchSem.subjects[0];
+    const scheme = university.schemes?.[0];
+    if (!scheme) return;
+    const branchSem = scheme.branchSemesters?.[0];
+    if (!branchSem) return;
+    const subject = branchSem.subjects?.[0];
+    if (!subject) return;
 
     this.state = { university, scheme, branchSem, subject };
     this.saveState();
@@ -78,10 +96,12 @@ class CurriculumStateManager {
   }
 
   public setScheme(schemeId: string) {
-    const scheme = this.state.university.schemes.find(s => s.id === schemeId);
+    const scheme = this.state.university?.schemes?.find(s => s.id === schemeId) || this.state.university?.schemes?.[0];
     if (!scheme) return;
-    const branchSem = scheme.branchSemesters[0];
-    const subject = branchSem.subjects[0];
+    const branchSem = scheme.branchSemesters?.[0];
+    if (!branchSem) return;
+    const subject = branchSem.subjects?.[0];
+    if (!subject) return;
 
     this.state = { ...this.state, scheme, branchSem, subject };
     this.saveState();
@@ -89,9 +109,10 @@ class CurriculumStateManager {
   }
 
   public setBranchSem(branchSemId: string) {
-    const branchSem = this.state.scheme.branchSemesters.find(b => b.id === branchSemId);
+    const branchSem = this.state.scheme?.branchSemesters?.find(b => b.id === branchSemId) || this.state.scheme?.branchSemesters?.[0];
     if (!branchSem) return;
-    const subject = branchSem.subjects[0];
+    const subject = branchSem.subjects?.[0];
+    if (!subject) return;
 
     this.state = { ...this.state, branchSem, subject };
     this.saveState();
@@ -99,7 +120,7 @@ class CurriculumStateManager {
   }
 
   public setSubject(subjectId: string) {
-    const subject = this.state.branchSem.subjects.find(s => s.id === subjectId);
+    const subject = this.state.branchSem?.subjects?.find(s => s.id === subjectId) || this.state.branchSem?.subjects?.[0];
     if (!subject) return;
 
     this.state = { ...this.state, subject };
@@ -109,13 +130,15 @@ class CurriculumStateManager {
 
   public setFullSelection(universityId: string, schemeId: string, branchSemId: string, subjectId: string) {
     const university = UNIVERSITIES_DATABASE.find(u => u.id === universityId) || UNIVERSITIES_DATABASE[0];
-    const scheme = university.schemes.find(s => s.id === schemeId) || university.schemes[0];
-    const branchSem = scheme.branchSemesters.find(b => b.id === branchSemId) || scheme.branchSemesters[0];
-    const subject = branchSem.subjects.find(s => s.id === subjectId) || branchSem.subjects[0];
+    const scheme = university?.schemes?.find(s => s.id === schemeId) || university?.schemes?.[0];
+    const branchSem = scheme?.branchSemesters?.find(b => b.id === branchSemId) || scheme?.branchSemesters?.[0];
+    const subject = branchSem?.subjects?.find(s => s.id === subjectId) || branchSem?.subjects?.[0];
 
-    this.state = { university, scheme, branchSem, subject };
-    this.saveState();
-    this.notify();
+    if (university && scheme && branchSem && subject) {
+      this.state = { university, scheme, branchSem, subject };
+      this.saveState();
+      this.notify();
+    }
   }
 
   public subscribe(listener: Listener): () => void {

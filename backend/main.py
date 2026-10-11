@@ -3,6 +3,14 @@ MINDMESH-NEXUS: Autonomous Voice-First AI Teaching Co-Pilot Backend Brain
 FastAPI Gateway with Epistemic Trust Engine, DKT Knowledge Tracing, and Agnes 3.0 Flash 512K Loop.
 """
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Ensure .env is loaded
+for _p in [Path(__file__).resolve().parent / ".env", Path(__file__).resolve().parent.parent / ".env"]:
+    if _p.exists():
+        load_dotenv(_p, override=True)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -52,6 +60,26 @@ app.include_router(groq_router)
 app.include_router(ollama_router)
 app.include_router(whisper_router)
 app.include_router(engineering_router)
+
+from pydantic import BaseModel
+from typing import Optional
+from .services.ollama_service import ollama_service
+
+class CopilotChatRequest(BaseModel):
+    message: Optional[str] = None
+    prompt: Optional[str] = None
+
+@app.post("/api/copilot/chat")
+def copilot_chat(req: CopilotChatRequest):
+    query = (req.message or req.prompt or "").strip()
+    if not query:
+        return {"reply": "", "model": ollama_service.default_model}
+    res = ollama_service.chat(query)
+    return {
+        "reply": res.get("response", ""),
+        "model": ollama_service.default_model,
+        "provider": res.get("provider", "Ollama Cloud")
+    }
 
 @app.get("/")
 def root_info():

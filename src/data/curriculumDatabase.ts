@@ -107,6 +107,7 @@ function makeLessonPlan(params: {
   advancedInquiry: string;
   quiz: any[];
   citation: string;
+  visualHotspots?: { label: string; hindiLabel?: string; description: string; x: number; y: number }[];
 }): LessonPlan {
   return {
     id: params.id,
@@ -170,14 +171,22 @@ function makeLessonPlan(params: {
       targetStudents: ['Deepa Nair', 'Aditi Rao']
     },
     visualDiagram: {
-      title: `${params.topic} System Architecture`,
+      title: `${params.topic} Flowchart & Architecture`,
       imageUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800',
       caption: `Visual schematic and memory organization for ${params.topic}`,
       captionHindi: `विजुअल आरेख: ${params.topic}`,
-      hotspots: [
-        { label: 'Control Unit / Core Logic', hindiLabel: 'नियंत्रण इकाई', description: 'Coordinates dataflow', x: 25, y: 35 },
-        { label: 'Memory / Cache Hierarchy', hindiLabel: 'मेमोरी स्तर', description: 'High speed buffer', x: 70, y: 65 }
-      ]
+      hotspots: params.visualHotspots
+        ? params.visualHotspots.map(h => ({
+            label: h.label,
+            hindiLabel: h.hindiLabel || h.label,
+            description: h.description,
+            x: h.x,
+            y: h.y
+          }))
+        : [
+            { label: 'Control Unit / Core Logic', hindiLabel: 'नियंत्रण इकाई', description: 'Coordinates dataflow', x: 25, y: 35 },
+            { label: 'Memory / Cache Hierarchy', hindiLabel: 'मेमोरी स्तर', description: 'High speed buffer', x: 70, y: 65 }
+          ]
     },
     formativeQuiz: params.quiz.map((q, qidx) => ({
       id: `q-${params.id}-${qidx}`,
@@ -695,6 +704,215 @@ const SUBJECT_21CS42: CurriculumSubject = {
     }
   ],
   aiSystemPromptContext: 'You are the MINDMESH-NEXUS AI Algorithms Professor for VTU 21CS42.'
+};
+
+// ----------------------------------------------------------------------------
+// SUBJECT: VTU 21CS44 - Operating Systems (OS)
+// ----------------------------------------------------------------------------
+export const SUBJECT_21CS44: CurriculumSubject = {
+  id: '21cs44',
+  code: '21CS44',
+  title: 'Operating Systems',
+  shortTitle: '21CS44 - Operating Systems',
+  credits: 4,
+  category: 'Core',
+  seeMarks: 50,
+  cieMarks: 50,
+  totalHours: 40,
+  overview: 'Introduction to Operating Systems, Process Management & CPU Scheduling, Process Synchronization & Deadlocks, Memory Management & Virtual Memory, File Systems and Mass-Storage Structure.',
+  textbooks: [
+    'Abraham Silberschatz, Peter Baer Galvin, Greg Gagne, Operating System Concepts, 10th Edition, Wiley, 2024',
+    'Andrew S. Tanenbaum, Herbert Bos, Modern Operating Systems, 4th Edition, Pearson'
+  ],
+  referenceBooks: [
+    'William Stallings, Operating Systems: Internals and Design Principles, 9th Edition, Pearson',
+    'Remzi H. Arpaci-Dusseau and Andrea C. Arpaci-Dusseau, Operating Systems: Three Easy Pieces'
+  ],
+  modules: [
+    {
+      moduleNumber: 1,
+      title: 'Introduction to Operating Systems & System Calls',
+      hours: 8,
+      description: 'OS services, User and OS interface, System calls, Types of system calls, System programs, OS design and implementation, OS structure (Monolithic, Microkernel, Hybrid).',
+      topics: ['System call trap execution', 'Dual-mode operation (User mode vs Kernel mode)', 'Process Control Block (PCB) structure'],
+      courseOutcomes: ['CO1: Explain OS architectures and system call handling.'],
+      bloomsLevel: 'L2: Understand',
+      recommendedTextbook: 'Silberschatz, Chapter 1 & 2'
+    },
+    {
+      moduleNumber: 2,
+      title: 'Process Management, Threads & CPU Scheduling',
+      hours: 8,
+      description: 'Process concepts, Process states, Context switching, Thread models, CPU scheduling criteria, Scheduling algorithms (FCFS, SJF, Priority, Round Robin, Multilevel Feedback Queue).',
+      topics: ['Process State Machine (New, Ready, Running, Waiting, Terminated)', 'Gantt chart calculations for Average Waiting Time', 'Preemptive vs Non-preemptive scheduling'],
+      courseOutcomes: ['CO2: Compute CPU scheduling metrics across varying workload arrivals.'],
+      bloomsLevel: 'L3: Apply',
+      recommendedTextbook: 'Silberschatz, Chapter 3, 4 & 5'
+    },
+    {
+      moduleNumber: 3,
+      title: 'Process Synchronization & Deadlock Handling',
+      hours: 8,
+      description: 'Critical Section Problem, Peterson’s Solution, Hardware synchronization (TestAndSet, Swap), Semaphores (Wait/Signal), Classical problems (Dining Philosophers, Readers-Writers), Deadlock characterization, Banker’s Algorithm for deadlock avoidance.',
+      topics: ['Mutual exclusion, Progress, Bounded waiting conditions', 'Counting vs Binary Semaphores', 'Banker\'s Algorithm: Allocation, Max, Available and Need matrices'],
+      courseOutcomes: ['CO3: Solve race conditions with synchronization primitives and verify system safety via Banker\'s Algorithm.'],
+      bloomsLevel: 'L4: Analyze',
+      recommendedTextbook: 'Silberschatz, Chapter 6, 7 & 8',
+      pyqFrequency: 'Very High',
+      importantFormulasOrCode: ['Need[i][j] = Max[i][j] - Allocation[i][j]', 'wait(S): while(S<=0); S--;', 'signal(S): S++;']
+    },
+    {
+      moduleNumber: 4,
+      title: 'Memory Management & Virtual Memory',
+      hours: 8,
+      description: 'Logical vs Physical address space, Swapping, Contiguous memory allocation, Paging, Structure of page table, Segmentation, Virtual memory basics, Demand paging, Page replacement algorithms (FIFO, LRU, Optimal).',
+      topics: ['Translation Lookaside Buffer (TLB) hit/miss latency', 'Page Fault handling sequence', 'Belady’s Anomaly in FIFO replacement', 'LRU stack and counter implementations'],
+      courseOutcomes: ['CO4: Calculate Effective Memory Access Time (EMAT) and page fault overheads.'],
+      bloomsLevel: 'L4: Analyze',
+      recommendedTextbook: 'Silberschatz, Chapter 9 & 10'
+    },
+    {
+      moduleNumber: 5,
+      title: 'File Systems & Storage Management',
+      hours: 8,
+      description: 'File concept, Access methods, Directory structures, File system mounting, File sharing and protection, Disk scheduling algorithms (FCFS, SSTF, SCAN, C-SCAN, LOOK).',
+      topics: ['Inode structure and block pointers', 'Disk head movement seek time calculation', 'RAID levels 0, 1, 5 architecture'],
+      courseOutcomes: ['CO5: Optimize secondary storage access with disk scheduling heuristics.'],
+      bloomsLevel: 'L3: Apply',
+      recommendedTextbook: 'Silberschatz, Chapter 11 & 14'
+    }
+  ],
+  lessonPlan: makeLessonPlan({
+    id: 'lesson-21cs44-os',
+    topic: 'Operating Systems (OS): Process Scheduling & Deadlock Handling (21CS44)',
+    topicHindi: 'ऑपरेटिंग सिस्टम: प्रोसेस शेड्यूलिंग एवं डेडलॉक प्रबंधन',
+    topicKannada: 'ಆಪರೇಟಿಂಗ್ ಸಿಸ್ಟಮ್ಸ್: ಪ್ರಕ್ರಿಯೆ ವೇಳಾಪಟ್ಟಿ ಮತ್ತು ಡೆಡ್‌ಲಾಕ್ ನಿರ್ವಹಣೆ',
+    grade: 4,
+    subject: '21CS44 - Operating Systems',
+    durationMinutes: 45,
+    beginnerSummary: 'An Operating System acts as the conductor of a busy orchestra: deciding which program gets CPU time, allocating memory safely, and preventing processes from getting stuck waiting for each other.',
+    beginnerAnalogy: 'The "Busy Restaurant Kitchen": The CPU is the Master Chef, the Processes are Food Orders, the Ready Queue is the Order Board, and a Deadlock is two cooks each holding the knife that the other cook needs to finish their dish!',
+    objectives: [
+      'Trace process state transitions from New to Ready, Running, Waiting, and Terminated.',
+      'Compute Gantt charts and average waiting time for Round Robin and SJF scheduling.',
+      'Enforce Mutual Exclusion in Critical Sections using Semaphores and Mutex Locks.',
+      'Execute Banker\'s Algorithm to determine if a state is in a Deadlock-Free Safe Sequence.',
+      'Calculate Effective Memory Access Time (EMAT) with TLB caching and LRU page replacement.'
+    ],
+    sections: [
+      {
+        title: 'Stage 1: Process State & PCB Context Lifecycle',
+        durationMinutes: 8,
+        content: 'Understand process creation (fork), PCB register state context, and preemptive kernel switching.'
+      },
+      {
+        title: 'Stage 2: CPU Scheduling Criteria & Gantt Chart Analysis',
+        durationMinutes: 10,
+        content: 'Solve Round Robin time-quantum (q=2ms) and compute Turnaround Time and Waiting Time.'
+      },
+      {
+        title: 'Stage 3: Critical Section Synchronization & Semaphores',
+        durationMinutes: 10,
+        content: 'Prevent race conditions using Atomic TestAndSet, Mutex Locks, and Counting Semaphores.'
+      },
+      {
+        title: 'Stage 4: Deadlock Avoidance & Banker\'s Algorithm Safety Test',
+        durationMinutes: 10,
+        content: 'Calculate Need Matrix = Max - Allocation. Execute safety vector algorithm to find Safe Sequence.'
+      },
+      {
+        title: 'Stage 5: Virtual Memory, TLB Paging & LRU Page Replacement',
+        durationMinutes: 7,
+        content: 'Analyze page fault traps, Page Table walk, TLB hit rates, and Belady\'s Anomaly in FIFO vs LRU.'
+      }
+    ],
+    advancedInquiry: 'How did Priority Inversion cause the infamous Mars Pathfinder spacecraft computer reset bug in 1997, and how did Priority Inheritance solve it?',
+    citation: 'VTU 2025/2022 Scheme Module 3: Silberschatz Chapter 5, 6, 7 & 8',
+    visualHotspots: [
+      {
+        label: '1. Process State & PCB',
+        hindiLabel: '1. प्रोसेस स्टेट व पीसीबी',
+        description: 'Process admission into Ready Queue; initialization of PID, program counter, and CPU register state in PCB.',
+        x: 10,
+        y: 50
+      },
+      {
+        label: '2. CPU Scheduling',
+        hindiLabel: '2. सीपीयू शेड्यूलिंग',
+        description: 'Dispatcher loads selected process via Round-Robin / SJF algorithm; executes context switch into CPU core.',
+        x: 30,
+        y: 50
+      },
+      {
+        label: '3. Critical Section & Mutex',
+        hindiLabel: '3. क्रिटिकल सेक्शन व सेमाफोर',
+        description: 'Process requests shared memory / hardware locks via wait(semaphore); guarantees mutual exclusion without race conditions.',
+        x: 50,
+        y: 50
+      },
+      {
+        label: '4. Deadlock Avoidance',
+        hindiLabel: '4. डेडलॉक बचाव (बैंकर)',
+        description: 'Banker\'s Algorithm checks Resource Request vector against Available vector to verify existence of a Safe Sequence.',
+        x: 70,
+        y: 50
+      },
+      {
+        label: '5. Virtual Memory & Paging',
+        hindiLabel: '5. वर्चुअल मेमोरी व पेजिंग',
+        description: 'TLB hardware lookup translates virtual addresses to physical frames; handles Page Fault exceptions via LRU replacement.',
+        x: 90,
+        y: 50
+      }
+    ],
+    quiz: [
+      {
+        question: 'Which of the following conditions is NOT one of Coffman\'s four necessary conditions for a Deadlock to occur?',
+        questionHindi: 'निम्नलिखित में से कौन सी स्थिति डेडलॉक के लिए चार कॉफ़मैन शर्तों में से नहीं है?',
+        options: ['Preemptive Resource Allocation', 'Mutual Exclusion', 'Hold and Wait', 'Circular Wait'],
+        optionsHindi: ['प्रीमेप्टिव संसाधन आवंटन', 'पारस्परिक अपवर्जन (Mutual Exclusion)', 'धारण और प्रतीक्षा (Hold and Wait)', 'परिपत्र प्रतीक्षा (Circular Wait)'],
+        correctAnswerIndex: 0,
+        explanation: 'The four necessary conditions for deadlock are Mutual Exclusion, Hold and Wait, No Preemption, and Circular Wait. If Preemption is allowed, deadlock cannot happen!',
+        explanationHindi: 'चार शर्तें हैं: म्यूचुअल एक्सक्लूजन, होल्ड एंड वेट, नो प्रीमेम्प्शन, और सर्कुलर वेट। यदि प्रीमेम्प्शन की अनुमति है, तो डेडलॉक नहीं हो सकता।',
+        bloomLevel: 'Understand',
+        targetConcept: 'Deadlock Necessary Conditions (Coffman Conditions)',
+        misconceptionDistractors: ['Confusing No Preemption with Preemption']
+      },
+      {
+        question: 'In the Banker\'s Algorithm for Deadlock Avoidance, how is the Need Matrix calculated for each process i?',
+        questionHindi: 'बैंकर एल्गोरिदम में प्रत्येक प्रोसेस के लिए Need Matrix की गणना कैसे की जाती है?',
+        options: ['Need[i] = Max[i] - Allocation[i]', 'Need[i] = Allocation[i] + Available', 'Need[i] = Max[i] - Available', 'Need[i] = TotalResources - Allocation[i]'],
+        optionsHindi: ['Need[i] = Max[i] - Allocation[i]', 'Need[i] = Allocation[i] + Available', 'Need[i] = Max[i] - Available', 'Need[i] = TotalResources - Allocation[i]'],
+        correctAnswerIndex: 0,
+        explanation: 'The Need Matrix represents the remaining resources process i may request: Need[i][j] = Max[i][j] - Allocation[i][j].',
+        explanationHindi: 'Need Matrix शेष संसाधनों को दर्शाता है: Need[i] = Max[i] - Allocation[i]।',
+        bloomLevel: 'Apply',
+        targetConcept: 'Banker\'s Algorithm Need Matrix'
+      }
+    ]
+  }),
+  quizQuestions: [
+    {
+      id: 'q-os-deadlock-1',
+      question: 'Which of the following conditions is NOT one of the 4 Coffman conditions for Deadlock?',
+      options: ['Preemptive Resource Allocation', 'Mutual Exclusion', 'Hold and Wait', 'Circular Wait'],
+      correctAnswerIndex: 0,
+      explanation: 'No Preemption is required for deadlock; preemptive allocation prevents deadlock.',
+      module: 3,
+      difficulty: 'easy',
+      topicTag: 'Deadlocks'
+    }
+  ],
+  examPapers: [
+    {
+      title: 'VTU 21CS44 Operating Systems SEE Exam Paper Jan 2025',
+      year: '2025',
+      scheme: '2022/2025 Scheme',
+      type: 'Semester End Exam (SEE)',
+      totalMarks: 100
+    }
+  ],
+  aiSystemPromptContext: 'You are the MINDMESH-NEXUS AI Operating Systems Professor for VTU 21CS44 (Operating Systems). Provide process scheduling Gantt charts, Peterson synchronization proofs, Banker\'s Algorithm matrices, and paging calculations.'
 };
 
 // ----------------------------------------------------------------------------
@@ -1238,3 +1456,50 @@ export function getDefaultCurriculumSelection() {
     subject
   };
 }
+
+export const ALL_CURRICULUM_SUBJECTS: CurriculumSubject[] = [
+  SUBJECT_21CS44,
+  SUBJECT_1BCS305,
+  SUBJECT_21CS42,
+  SUBJECT_21CS34,
+  SUBJECT_21CS33,
+  SUBJECT_21DS35,
+  SUBJECT_G7_SCIENCE
+];
+
+export function findCurriculumSubject(query: string): CurriculumSubject | null {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) return null;
+
+  // OS / Operating Systems
+  if (/\b(os|operating system|operating systems|deadlock|deadlocks|process scheduling|semaphores?|paging|banker'?s?)\b/i.test(q)) {
+    return SUBJECT_21CS44;
+  }
+  // Data Structures (DSA)
+  if (/\b(dsa|data structure|data structures|stack|stacks|queues?|linked lists?|trees?|avl|heaps?)\b/i.test(q)) {
+    return SUBJECT_1BCS305;
+  }
+  // Algorithms (DAA)
+  if (/\b(daa|knapsack|dijkstra|greedy|dynamic programming|master theorem)\b/i.test(q)) {
+    return SUBJECT_21CS42;
+  }
+  // Computer Architecture (COA)
+  if (/\b(coa|computer organization|architecture|booth'?s algorithm|pipelining|cache)\b/i.test(q)) {
+    return SUBJECT_21CS34;
+  }
+  // Electronics (ADE)
+  if (/\b(ade|analog|digital electronics|op-amp|operational amplifier|k-map|logic gates?)\b/i.test(q)) {
+    return SUBJECT_21CS33;
+  }
+  // Data Science & Machine Learning
+  if (/\b(data science|machine learning|ml|decision trees?|entropy|information gain|k-means|pca)\b/i.test(q)) {
+    return SUBJECT_21DS35;
+  }
+  // Grade 7 Photosynthesis
+  if (/\b(photosynthesis|stomata|chloroplast|guard cells?|plant nutrition)\b/i.test(q)) {
+    return SUBJECT_G7_SCIENCE;
+  }
+
+  return null;
+}
+

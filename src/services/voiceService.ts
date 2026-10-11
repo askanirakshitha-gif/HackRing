@@ -365,9 +365,9 @@ class VoiceService {
             this.onResultCallback(this.currentInterimText, false);
           }
 
-          // Snappy Auto-Endpointing: Automatically detect when the user finishes speaking and respond
+          // Natural Auto-Endpointing: Detect pause after sentence and execute automatically
           if (this.speechDebounceTimer) clearTimeout(this.speechDebounceTimer);
-          const debounceDelay = accumulatedFinal.trim().length > 2 ? 800 : 1300;
+          const debounceDelay = accumulatedFinal.trim().length > 2 ? 1200 : 1500;
           this.speechDebounceTimer = setTimeout(() => {
             if (this.isListening && this.currentInterimText.trim().length > 2) {
               this.stopListening();
@@ -435,11 +435,18 @@ class VoiceService {
 
       // 3. Ultra-Responsive Combined Vocal Level
       let rawLevel = 0;
-      if (avgDev > 0.08) {
-        rawLevel = Math.max(rawLevel, Math.min(100, Math.round(avgDev * 38)));
+      if (avgDev > 0.02) {
+        rawLevel = Math.max(rawLevel, Math.min(100, Math.round(avgDev * 65)));
       }
-      if (avgFreqEnergy > 0.8) {
-        rawLevel = Math.max(rawLevel, Math.min(100, Math.round(avgFreqEnergy * 2.5)));
+      if (avgFreqEnergy > 0.3) {
+        rawLevel = Math.max(rawLevel, Math.min(100, Math.round(avgFreqEnergy * 3.2)));
+      }
+
+      // Real acoustic vocal energy detection (excludes ambient noise floor)
+      const isRealSpeechEnergy = (avgDev > 0.035) || (avgFreqEnergy > 0.5);
+      if (isRealSpeechEnergy) {
+        this.hasSpokenInSession = true;
+        this.lastSpeechDetectedTime = Date.now();
       }
 
       // If speech is actively arriving or interim text exists, ensure responsive visual feedback
@@ -447,17 +454,16 @@ class VoiceService {
         rawLevel = Math.min(85, Math.max(rawLevel, 34 + Math.floor(Math.sin(Date.now() / 70) * 15)));
       }
 
-      const normalizedLevel = Math.min(100, Math.max(0, rawLevel));
-
-      // Voice Activity Detection (VAD)
-      // Ambient noise floor is typically <12%. Human vocal pressure registers >= 14%
-      if (normalizedLevel >= 14) {
-        this.hasSpokenInSession = true;
-        this.lastSpeechDetectedTime = Date.now();
+      // Subtle ambient visual pulse (max 5%) so user sees mic is on, without tripping speech detector
+      let displayLevel = rawLevel;
+      if (displayLevel < 5) {
+        displayLevel = 3 + Math.floor(Math.sin(Date.now() / 250) * 2);
       }
 
-      // Snappy 1800ms silence endpointing: stops automatically when user finishes speaking
-      if (this.hasSpokenInSession && (Date.now() - this.lastSpeechDetectedTime) > 1800) {
+      const normalizedLevel = Math.min(100, Math.max(0, displayLevel));
+
+      // Silence endpointing: automatically stops and executes command 1400ms after user stops speaking
+      if (this.hasSpokenInSession && (Date.now() - this.lastSpeechDetectedTime) > 1400) {
         this.stopListening();
         return;
       }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
 export type RobotState = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -23,6 +23,7 @@ export const Robot3DAvatar: React.FC<Robot3DAvatarProps> = ({
   className = '',
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
+  const [hasWebGLError, setHasWebGLError] = useState(false);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const robotGroupRef = useRef<THREE.Group | null>(null);
@@ -62,21 +63,25 @@ export const Robot3DAvatar: React.FC<Robot3DAvatarProps> = ({
     const container = mountRef.current;
     if (!container) return;
 
-    const { width, height } = getDimensions();
+    let renderer: THREE.WebGLRenderer | null = null;
+    let cleanupHandler: (() => void) | null = null;
 
-    // 1. Scene & Camera Setup
-    const scene = new THREE.Scene();
-    sceneRef.current = scene;
+    try {
+      const { width, height } = getDimensions();
 
-    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
-    camera.position.set(0, 0.25, 3.8);
+      // 1. Scene & Camera Setup
+      const scene = new THREE.Scene();
+      sceneRef.current = scene;
 
-    // 2. High Performance WebGL Renderer with Alpha Transparency
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance'
-    });
+      const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+      camera.position.set(0, 0.25, 3.8);
+
+      // 2. High Performance WebGL Renderer with Alpha Transparency
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -449,25 +454,35 @@ export const Robot3DAvatar: React.FC<Robot3DAvatarProps> = ({
         }
       }
 
-      renderer.render(scene, camera);
+      if (renderer) {
+        renderer.render(scene, camera);
+      }
     };
 
     animate();
 
+      cleanupHandler = () => {
+        if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
+        if (interactive) {
+          container.removeEventListener('mousemove', handlePointerMove);
+          container.removeEventListener('mousedown', handlePointerDown);
+          window.removeEventListener('mouseup', handlePointerUp);
+          container.removeEventListener('touchmove', handlePointerMove);
+          container.removeEventListener('touchstart', handlePointerDown);
+          window.removeEventListener('touchend', handlePointerUp);
+        }
+        if (renderer) renderer.dispose();
+        materialsRef.current.forEach(m => m.dispose());
+        container.innerHTML = '';
+      };
+    } catch (err) {
+      console.warn('WebGL initialization failed in Robot3DAvatar, rendering 2D fallback:', err);
+      setHasWebGLError(true);
+    }
+
     // 7. Cleanup on Unmount
     return () => {
-      if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
-      if (interactive) {
-        container.removeEventListener('mousemove', handlePointerMove);
-        container.removeEventListener('mousedown', handlePointerDown);
-        window.removeEventListener('mouseup', handlePointerUp);
-        container.removeEventListener('touchmove', handlePointerMove);
-        container.removeEventListener('touchstart', handlePointerDown);
-        window.removeEventListener('touchend', handlePointerUp);
-      }
-      renderer.dispose();
-      materialsRef.current.forEach(m => m.dispose());
-      container.innerHTML = '';
+      if (cleanupHandler) cleanupHandler();
     };
   }, [size, interactive]);
 
@@ -479,6 +494,36 @@ export const Robot3DAvatar: React.FC<Robot3DAvatarProps> = ({
       }
     });
   }, [wireframeMode]);
+
+  const { width, height } = getDimensions();
+
+  if (hasWebGLError) {
+    const stateColors: Record<RobotState, { border: string; bg: string; dot: string }> = {
+      idle: { border: 'border-slate-300', bg: 'bg-slate-100', dot: 'bg-emerald-500' },
+      listening: { border: 'border-emerald-400', bg: 'bg-emerald-50', dot: 'bg-emerald-500 animate-ping' },
+      thinking: { border: 'border-amber-400', bg: 'bg-amber-50', dot: 'bg-amber-500 animate-pulse' },
+      speaking: { border: 'border-blue-400', bg: 'bg-blue-50', dot: 'bg-blue-600 animate-bounce' }
+    };
+    const currentTheme = stateColors[state] || stateColors.idle;
+
+    return (
+      <div 
+        style={{ width: `${width}px`, height: `${height}px` }}
+        className={`relative flex flex-col items-center justify-center rounded-2xl border-2 ${currentTheme.border} ${currentTheme.bg} shadow-md transition-all ${className}`}
+      >
+        <div className="relative flex items-center justify-center">
+          {/* Head & Visor */}
+          <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center shadow-inner relative">
+            <div className="w-6 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee] animate-pulse" />
+            <div className={`absolute -top-2 w-2 h-2 rounded-full ${currentTheme.dot}`} />
+          </div>
+        </div>
+        <span className="text-[10px] font-mono font-bold mt-1 text-slate-600 capitalize">
+          {state}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className={`relative flex flex-col items-center justify-center select-none ${className}`}>

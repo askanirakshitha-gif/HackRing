@@ -13,12 +13,12 @@ router = APIRouter(prefix="/api/whisper", tags=["Whisper Voice ASR Engine"])
 class TranscribeAudioRequest(BaseModel):
     audio_base64: str
     language: Optional[str] = "en"
-    model_size: Optional[str] = "base"
+    model_size: Optional[str] = "tiny"
 
 class VoicePipelineRequest(BaseModel):
     audio_base64: str
     language: Optional[str] = "en"
-    whisper_model: Optional[str] = "base"
+    whisper_model: Optional[str] = "tiny"
     ollama_model: Optional[str] = "llama3.2"
 
 @router.get("/status")

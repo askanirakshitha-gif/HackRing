@@ -29,7 +29,7 @@ export interface OllamaModelTag {
 }
 
 const DEFAULT_HOST = 'http://localhost:11434';
-const DEFAULT_MODEL = 'llama3.2';
+const DEFAULT_MODEL = 'gpt-oss:120b-cloud';
 const BACKEND_PROXY_URL = 'http://127.0.0.1:8000/api/ollama';
 
 class OllamaService {
@@ -80,10 +80,43 @@ class OllamaService {
     models: string[];
     source: 'direct' | 'proxy' | 'none';
   }> {
-    // 1. Try Direct Localhost Fetch
+    // 1. Try FastAPI Backend Gateway Proxy first (supports Ollama Cloud & local)
+    for (const endpoint of ['/api/ollama/status', `${BACKEND_PROXY_URL}/status`]) {
+      try {
+        const proxyController = new AbortController();
+        const proxyTimeout = setTimeout(() => proxyController.abort(), 2500);
+
+        const proxyResp = await fetch(endpoint, {
+          method: 'GET',
+          signal: proxyController.signal
+        });
+        clearTimeout(proxyTimeout);
+
+        if (proxyResp.ok) {
+          const proxyData = await proxyResp.json();
+          this.isOnline = proxyData.status === 'ONLINE';
+          if (proxyData.active_model) this.selectedModel = proxyData.active_model;
+          const modelNames = proxyData.installed_models?.map((m: any) => typeof m === 'string' ? m : m.name?.split(':')[0]) || this.installedModels;
+          if (modelNames.length > 0) this.installedModels = modelNames;
+
+          return {
+            status: proxyData.status === 'ONLINE' ? 'ONLINE' : 'OFFLINE',
+            host: proxyData.host || this.hostUrl,
+            version: proxyData.version || undefined,
+            activeModel: this.selectedModel,
+            models: this.installedModels,
+            source: 'proxy'
+          };
+        }
+      } catch {
+        // try next
+      }
+    }
+
+    // 2. Try Direct Localhost Fetch as fallback
     try {
       const directController = new AbortController();
-      const directTimeout = setTimeout(() => directController.abort(), 1800);
+      const directTimeout = setTimeout(() => directController.abort(), 1200);
 
       const resp = await fetch(`${this.hostUrl}/api/version`, {
         method: 'GET',
@@ -105,37 +138,7 @@ class OllamaService {
         };
       }
     } catch {
-      // Direct localhost might fail if CORS is restricted or offline; try backend proxy next
-    }
-
-    // 2. Try FastAPI Backend Gateway Proxy
-    try {
-      const proxyController = new AbortController();
-      const proxyTimeout = setTimeout(() => proxyController.abort(), 2000);
-
-      const proxyResp = await fetch(`${BACKEND_PROXY_URL}/status`, {
-        method: 'GET',
-        signal: proxyController.signal
-      });
-      clearTimeout(proxyTimeout);
-
-      if (proxyResp.ok) {
-        const proxyData = await proxyResp.json();
-        this.isOnline = proxyData.status === 'ONLINE';
-        const modelNames = proxyData.installed_models?.map((m: any) => m.name?.split(':')[0]) || this.installedModels;
-        if (modelNames.length > 0) this.installedModels = modelNames;
-
-        return {
-          status: proxyData.status === 'ONLINE' ? 'ONLINE' : 'OFFLINE',
-          host: proxyData.host || this.hostUrl,
-          version: proxyData.version || undefined,
-          activeModel: this.selectedModel,
-          models: this.installedModels,
-          source: 'proxy'
-        };
-      }
-    } catch {
-      // Backend proxy unavailable
+      // Direct localhost offline
     }
 
     this.isOnline = false;
@@ -259,11 +262,31 @@ Analyze the voice command and output ONLY valid JSON matching this schema:
   /**
    * Fast Local LLM Chat Query
    */
-  public async chat(prompt: string, modelOverride?: string): Promise<string> {
+  public async chat(prompt: string, modelOverride?: string, systemPrompt?: string): Promise<string> {
     const modelToUse = modelOverride || this.selectedModel;
-    const sysPrompt = 'You are MINDMESH-NEXUS, an expert AI Teaching Co-Pilot in Engineering & Science. Provide a clear, technically precise explanation in 2 to 3 sentences.';
+    const sysPrompt = systemPrompt || 'You are MINDMESH-NEXUS, an expert AI Teaching and Learning Co-Pilot in Engineering & Science. Provide a clear, technically precise explanation.';
 
-    // Try direct
+    // 1. Try FastAPI Backend Gateway Proxy first (Ollama Cloud / Local)
+    for (const url of ['/api/ollama/chat', `${BACKEND_PROXY_URL}/chat`, '/api/copilot/chat']) {
+      try {
+        const proxyResp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, message: prompt, system_prompt: sysPrompt, model: modelToUse })
+        });
+        if (proxyResp.ok) {
+          const data = await proxyResp.json();
+          const reply = data.response || data.reply || '';
+          if (reply && reply.trim()) {
+            return reply.trim();
+          }
+        }
+      } catch {
+        // try next
+      }
+    }
+
+    // 2. Try direct local Ollama if running
     try {
       const resp = await fetch(`${this.hostUrl}/api/chat`, {
         method: 'POST',
@@ -275,7 +298,7 @@ Analyze the voice command and output ONLY valid JSON matching this schema:
             { role: 'user', content: prompt }
           ],
           stream: false,
-          options: { temperature: 0.2, num_predict: 300 }
+          options: { temperature: 0.2, num_predict: 350 }
         })
       });
 
@@ -284,21 +307,7 @@ Analyze the voice command and output ONLY valid JSON matching this schema:
         return data.message?.content?.trim() || '';
       }
     } catch {
-      // Try backend proxy
-    }
-
-    try {
-      const proxyResp = await fetch(`${BACKEND_PROXY_URL}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, model: modelToUse })
-      });
-      if (proxyResp.ok) {
-        const data = await proxyResp.json();
-        return data.response || '';
-      }
-    } catch {
-      // All failed
+      // Local daemon failed
     }
 
     return '';

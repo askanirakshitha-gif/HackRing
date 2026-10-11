@@ -260,8 +260,10 @@ export function App() {
         }
       }
 
+      return result;
     } catch (err) {
       console.error('Pipeline execution error:', err);
+      return null;
     } finally {
       setIsProcessing(false);
     }
@@ -274,13 +276,17 @@ export function App() {
     }
     if (isListening) {
       setIsListening(false);
+      const currentSpoken = transcript;
+      setTranscript('Transcribing voice with Faster-Whisper...');
       const text = await voiceService.stopListening();
-      const rawCmd = (text && text.trim().length > 2) ? text.trim() : transcript.trim();
+      const rawCmd = (text && text.trim().length > 1) ? text.trim() : currentSpoken.trim();
       const isPlaceholder = rawCmd.toLowerCase().startsWith('transcribing') || rawCmd.toLowerCase().startsWith('listening');
       const commandToRun = isPlaceholder ? '' : rawCmd;
-      if (commandToRun.length > 2) {
+      if (commandToRun.length > 1) {
         setTranscript(commandToRun);
         handleExecuteCommand(commandToRun);
+      } else {
+        setTranscript('');
       }
     } else {
       const langCode = selectedLanguage === 'Kannada' ? 'kn-IN' : (selectedLanguage === 'Hindi' ? 'hi-IN' : 'en-IN');
@@ -645,7 +651,12 @@ export function App() {
       <ExplainableAIChatBot
         currentLanguage={selectedLanguage}
         students={students}
+        lessonPlan={lessonPlan}
         onSpeakText={handleSpeakCustomText}
+        onExecuteCommand={handleExecuteCommand}
+        onNavigateTab={(tab) => {
+          setActiveTeacherTab(tab as any);
+        }}
       />
 
       {/* Floating Indic Voice Page Reader Toolbar */}

@@ -23,7 +23,7 @@ export interface VoicePipelineResult {
 }
 
 class WhisperService {
-  private defaultModelSize: string = 'base';
+  private defaultModelSize: string = 'tiny';
 
   public async getStatus(): Promise<{ status: string; provider: string; supportedModels: string[] }> {
     try {

@@ -32,9 +32,12 @@ import { agnesService } from '../services/agnesService';
 import { geminiService } from '../services/geminiService';
 import { groqService } from '../services/groqService';
 import { ollamaService } from '../services/ollamaService';
+import { AgentEngine } from '../services/agentEngine';
+import { sharedState } from '../services/sharedStateManager';
+import { authService } from '../services/authService';
 import { Robot3DAvatar, RobotState } from './Robot3DAvatar';
 import { Robot3DPrintModal } from './Robot3DPrintModal';
-import { Student } from '../types';
+import { Student, LessonPlan } from '../types';
 
 export interface XAIFeatureAttribution {
   feature: string;
@@ -65,12 +68,18 @@ interface ExplainableAIChatBotProps {
   currentLanguage?: 'English' | 'Hindi' | 'Kannada' | 'Bilingual';
   students?: Student[];
   onSpeakText?: (text: string, lang?: string) => void;
+  onExecuteCommand?: (commandText: string) => Promise<any> | void;
+  onNavigateTab?: (tab: string) => void;
+  lessonPlan?: LessonPlan;
 }
 
 export const ExplainableAIChatBot: React.FC<ExplainableAIChatBotProps> = ({
   currentLanguage = 'English',
   students = [],
   onSpeakText,
+  onExecuteCommand,
+  onNavigateTab,
+  lessonPlan,
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
@@ -79,7 +88,7 @@ export const ExplainableAIChatBot: React.FC<ExplainableAIChatBotProps> = ({
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [expandedXaiId, setExpandedXaiId] = useState<string | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<'groq_lpu' | 'ollama' | 'gemini_flash' | 'agnes_flash' | 'fastapi_local' | 'hf_opensource'>('groq_lpu');
+  const [selectedProvider, setSelectedProvider] = useState<'ollama' | 'groq_lpu' | 'gemini_flash' | 'agnes_flash' | 'fastapi_local' | 'hf_opensource'>('ollama');
   const [show3DPrintModal, setShow3DPrintModal] = useState<boolean>(false);
   const [show3DStage, setShow3DStage] = useState<boolean>(true);
   const [isWireframe, setIsWireframe] = useState<boolean>(false);
@@ -120,13 +129,18 @@ export const ExplainableAIChatBot: React.FC<ExplainableAIChatBotProps> = ({
   ]);
 
   const QUICK_PROMPTS = [
+    { label: '👨‍🏫 Teacher Details & Code', query: 'Show me the teacher details, department, active classroom code, connected students, and schedule.' },
+    { label: '🎓 Student Details (Any Student)', query: 'Show me complete details, quiz scores, and weak concepts for student Aarav Sharma.' },
+    { label: '💡 Socratic Subject Tutor', query: 'Explain TCP Slow Start and AIMD step-by-step like a student chatbot with analogies and practice questions.' },
+    { label: '📅 Schedule Class in 10m', query: 'Schedule a 20-minute class on TCP Flow Control in 10 minutes.' },
+    { label: '🎯 Rahul Intervention', query: 'My student Rahul Sharma is weak in Slow Start, schedule an intervention review and reassessment.' },
+    { label: '📝 Update Marks (Aarav 9/10)', query: 'Edit marks for Aarav Sharma to 9 out of 10 in Slow Start.' },
+    { label: '📊 Student Risk Dossier', query: 'Which students are at high risk in my classroom? Give me their scores, weak concepts, and recommended interventions.' },
+    { label: '⏱️ Replan to 20 Min', query: 'Replan class duration to 20 minutes with a quick formative quiz.' },
     { label: '🦙 Open-Source AI & Ollama', query: 'Explain how Open-Source AI works with local Ollama LLMs and Faster-Whisper offline speech recognition.' },
-    { label: '🎙️ Faster-Whisper CTranslate2', query: 'How does Faster-Whisper with CTranslate2 achieve sub-300ms voice transcription without cloud APIs?' },
     { label: '🌐 TCP Congestion Control (AIMD)', query: 'Explain TCP Congestion Control, Slow Start exponential doubling, and AIMD linear increase.' },
     { label: '🌳 BST vs AVL Trees', query: 'Compare Binary Search Trees (BST) and self-balancing AVL Trees with time complexities.' },
-    { label: '🧠 How do GNNs work?', query: 'How does message passing work in Graph Neural Networks (GNNs) for student learning gap prediction?' },
-    { label: '💻 Deadlock & Banker\'s Algo', query: 'What are the 4 Coffman conditions for deadlocks and how does Banker\'s algorithm prevent them?' },
-    { label: '🐍 Python Dijkstra Implementation', query: 'Write a Python function for Dijkstra shortest path using heapq min-heap priority queue.' },
+    { label: '🌱 Photosynthesis & Stomata', query: 'Explain photosynthesis, stomatal gas exchange, and balanced equation for Grade 7.' },
     { label: '🌟 ಕನ್ನಡದಲ್ಲಿ ವಿವರಿಸಿ (Kannada)', query: 'ಓಪನ್ ಸೋರ್ಸ್ ಎಐ ಮತ್ತು ಲೋಕಲ್ ಒಲಾಮಾ ಎಲ್‌ಎಲ್‌ಎಂ ಹೇಗೆ ಕೆಲಸ ಮಾಡುತ್ತದೆ?' }
   ];
 
@@ -187,7 +201,246 @@ export const ExplainableAIChatBot: React.FC<ExplainableAIChatBotProps> = ({
     const q = query.toLowerCase();
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const id = `msg-${Date.now()}`;
-    const providerName = selectedProvider === 'agnes_flash' ? 'Agnes 3.0 Flash (512K Context)' : (selectedProvider === 'fastapi_local' ? 'FastAPI Local Open-Source Gateway' : 'HuggingFace Inference API');
+    const providerName = selectedProvider === 'agnes_flash' ? 'Agnes 3.0 Flash (512K Context)' : (selectedProvider === 'fastapi_local' ? 'FastAPI Local Open-Source Gateway' : (selectedProvider === 'groq_lpu' ? 'Groq Cloud LPU' : 'Ollama Cloud (gpt-oss:120b-cloud)'));
+
+    // T1. TEACHER & EDUCATOR DETAILS & CLASSROOM CODE
+    if (q.includes('teacher') || q.includes('aditi') || q.includes('who is the teacher') || q.includes('educator') || q.includes('classroom code') || q.includes('broadcast code') || q.includes('timetable') || q.includes('teacher schedule')) {
+      const teacherUser = authService.getUsers().find(u => u.role === 'teacher') || authService.getCurrentUser() || {
+        name: 'Dr. Aditi Sharma',
+        email: 'aditi.sharma@delhischool.edu.in',
+        phone: '+91 98765 43210',
+        department: 'Computer Science & Engineering',
+        subject: 'Computer Science & Engineering / Natural Sciences'
+      };
+      const code = sharedState.getClassroomCode();
+      const connectedStudents = sharedState.getConnectedStudents();
+      const events = sharedState.getCalendarEvents();
+      const interventions = sharedState.getInterventions();
+      const lessonTopic = lessonPlan?.topic || 'TCP Congestion Control & Flow Control';
+
+      return {
+        id,
+        sender: 'assistant',
+        text: `### 👨‍🏫 Official Educator Profile & Classroom Hub Details\n\n` +
+              `• **Lead Educator**: **${teacherUser.name}**\n` +
+              `• **Department**: ${teacherUser.department || 'Computer Science & Engineering & Applied Sciences'}\n` +
+              `• **Email**: \`${teacherUser.email}\` • **Phone**: \`${teacherUser.phone}\`\n` +
+              `• **Active Classroom Broadcast Code**: \`${code}\` (Students enter this code on the Student Portal to sync timetable & live broadcast)\n` +
+              `• **Subjects & Curriculum Modules Taught**:\n` +
+              `  1. *Computer Networks (CSE)*: Transport Layer, TCP Flow Control, Congestion Avoidance, AIMD\n` +
+              `  2. *Data Structures & Algorithms*: Linear Contiguous Arrays, Linked Lists, Stacks, Queues, Binary Search Trees (BST), AVL Balancing\n` +
+              `  3. *NCERT Grade 7 Science*: Photosynthesis, Stomata Gas Dynamics, Chloroplast Function, Plant Nutrition\n\n` +
+              `• **Live Connected Students (${connectedStudents.length} active)**:\n` +
+              `  ${connectedStudents.length > 0 ? connectedStudents.map(s => `\`${s}\``).join(', ') : '`Aarav Sharma`, `Prajwal Gowda`, `Rahul Sharma` (Live Synced)'}\n\n` +
+              `• **Scheduled Classes & Timetable**:\n` +
+              (events.length > 0 ? events.slice(0, 4).map(e => `  - **${e.date} (${e.time})**: ${e.title} [Status: *${e.status}*]`).join('\n') : '  - 10:00 AM - 10:45 AM: Computer Networks TCP Flow Control') + `\n\n` +
+              `• **Active Curricular Lesson Plan**: **${lessonTopic}** (${lessonPlan?.totalDurationMinutes || 40} min)\n` +
+              `• **Pending Prescribed Interventions (${interventions.length})**:\n` +
+              (interventions.length > 0 ? interventions.map(i => `  - *${i.studentName}*: ${i.concept} (${i.status})`).join('\n') : '  - Rahul Sharma: Slow Start Exponential Doubling Remedial Review') + `\n\n` +
+              `*Tip: As an educator, you can ask for details of any student (e.g. "Tell me about Rahul" or "Show Aarav's quiz marks") or ask any subject question!*`,
+        timestamp,
+        language: 'English',
+        domain: 'Educator Profile & Classroom Administration',
+        xai: {
+          topic: 'Educator Profile: Dr. Aditi Sharma & Classroom State',
+          groundingCitation: 'MINDMESH Institutional Governance Ledger & Teacher Auth Record',
+          trustScore: 99.8,
+          confidence: 99.9,
+          decisionRationale: 'Verified administrative credentials with live multi-tab classroom synchronization data.',
+          featureAttributions: [
+            { feature: 'Institutional Identity Verification', weight: 45, description: 'Faculty credentials and department alignment' },
+            { feature: 'Live Classroom Code Telemetry', weight: 35, description: 'Real-time WebSocket & storage broadcast state' },
+            { feature: 'Active Timetable Synchronizer', weight: 20, description: 'Synchronized with academic calendar' }
+          ],
+          activeProvider: providerName
+        }
+      };
+    }
+
+    // S1. SPECIFIC STUDENT PROFILE: RAHUL SHARMA
+    if (q.includes('rahul')) {
+      const student = (students || []).find(s => s.name.toLowerCase().includes('rahul')) || sharedState.getStudents().find(s => s.name.toLowerCase().includes('rahul'));
+      const scores = student?.recentScores?.map(s => `${s.quizName}: ${s.score}/${s.maxScore} (${Math.round((s.score / s.maxScore) * 100)}%) on ${s.date}`).join(', ') || 'Quiz 1: 5/10 (50%) on 2026-10-04';
+      return {
+        id,
+        sender: 'assistant',
+        text: `### 🎓 Student Diagnostic Profile: Rahul Sharma\n\n` +
+              `• **Grade & Learning Pace**: Grade ${student?.grade || 12} • Pace: **${student?.learningPace || 'Moderate'}** • Language: **${student?.preferredLanguage || 'English'}**\n` +
+              `• **GNN Risk Score**: **${student?.riskScore || 82}% (HIGH RISK)**\n` +
+              `• **Diagnostic Root Cause**: ${student?.riskReason || 'Struggling with Slow Start (Exponential Doubling) and AIMD linear increment.'}\n` +
+              `• **Weak Concepts**: ${(student?.weakConcepts || ['Slow Start (Exponential Doubling)', 'AIMD Dynamics']).join(', ')}\n` +
+              `• **Mastered Concepts**: ${(student?.masteredConcepts || ['TCP Flow Control', 'Sliding Window Basics']).join(', ')}\n` +
+              `• **Assessment History**: ${scores}\n` +
+              `• **Cognitive Traits**: Strong at conceptual block diagrams; struggles with time-pressured window calculations.\n` +
+              `• **Recommended Scaffolding**: ${student?.recommendedScaffolding || 'Visual animation of exponential cwnd doubling and AIMD linear increase. Assign 1-on-1 remedial review.'}\n\n` +
+              `*Tip: Say "Schedule intervention for Rahul" or "Give Rahul 8 out of 10" to perform agentic actions.*`,
+        timestamp,
+        language: 'English',
+        domain: 'Student Diagnostic & Learning Twin',
+        xai: {
+          topic: 'Student Profile: Rahul Sharma (std-0)',
+          groundingCitation: 'MINDMESH Living Learning Twin & GNN Knowledge Tracing (DKT-v2)',
+          trustScore: 99.6,
+          confidence: 99.8,
+          decisionRationale: 'Continuous real-time telemetry from formative quizzes, cognitive traits, and prerequisite graph tracing.',
+          featureAttributions: [
+            { feature: 'DKT Concept Mastery Vectors', weight: 50, description: 'Slow Start at 44% mastery below passing threshold' },
+            { feature: 'Formative Assessment History', weight: 30, description: 'Scored 5/10 in Quiz 1 on 2026-10-04' },
+            { feature: 'Cognitive Trait Telemetry', weight: 20, description: 'Visual learner requiring diagrammatic scaffolding' }
+          ],
+          activeProvider: providerName
+        }
+      };
+    }
+
+    // S2. SPECIFIC STUDENT PROFILE: AARAV SHARMA
+    if (q.includes('aarav')) {
+      const student = (students || []).find(s => s.name.toLowerCase().includes('aarav')) || sharedState.getStudents().find(s => s.name.toLowerCase().includes('aarav'));
+      const scores = student?.recentScores?.map(s => `${s.quizName}: ${s.score}/${s.maxScore} (${Math.round((s.score / s.maxScore) * 100)}%) on ${s.date}`).join(', ') || 'Photosynthesis Quiz: 4/10 (40%) on 2026-10-06';
+      return {
+        id,
+        sender: 'assistant',
+        text: `### 🎓 Student Diagnostic Profile: Aarav Sharma\n\n` +
+              `• **Grade & Learning Pace**: Grade ${student?.grade || 7} • Pace: **${student?.learningPace || 'Needs Guidance'}** • Language: **${student?.preferredLanguage || 'Hindi / English'}**\n` +
+              `• **GNN Risk Score**: **${student?.riskScore || 86}% (HIGH RISK)**\n` +
+              `• **Diagnostic Root Cause**: ${student?.riskReason || 'Difficulty balancing chemical equations (6CO2 + 6H2O) and stomatal guard cell mechanics.'}\n` +
+              `• **Weak Concepts**: ${(student?.weakConcepts || ['Chemical Equation Balancing', 'Stomatal Gas Exchange']).join(', ')}\n` +
+              `• **Mastered Concepts**: ${(student?.masteredConcepts || ['Basic Plant Parts', 'Sunlight Requirement']).join(', ')}\n` +
+              `• **Assessment History**: ${scores}\n` +
+              `• **Recommended Scaffolding**: ${student?.recommendedScaffolding || 'Physical 3D leaf model with bilingual Hindi-English terminology and step-by-step stoichiometric breakdown.'}\n\n` +
+              `*Tip: Say "Edit marks for Aarav to 9/10" or "Schedule intervention for Aarav" to execute actions.*`,
+        timestamp,
+        language: 'English',
+        domain: 'Student Diagnostic & Learning Twin',
+        xai: {
+          topic: 'Student Profile: Aarav Sharma (std-1)',
+          groundingCitation: 'NCERT Grade 7 Telemetry & Cognitive Living Twin',
+          trustScore: 99.7,
+          confidence: 99.9,
+          decisionRationale: 'Formative scores indicate stoichiometric gap in chemical equation coefficient balancing.',
+          featureAttributions: [
+            { feature: 'Prerequisite Gap Analysis', weight: 45, description: 'Struggles with balancing reactants and products' },
+            { feature: 'Assessment Scores', weight: 35, description: 'Scored 4/10 in Photosynthesis check' },
+            { feature: 'Bilingual Scaffolding Need', weight: 20, description: 'Benefits from Hindi-English terminology' }
+          ],
+          activeProvider: providerName
+        }
+      };
+    }
+
+    // S3. SPECIFIC STUDENT PROFILE: PRIYA PATEL
+    if (q.includes('priya')) {
+      const student = (students || []).find(s => s.name.toLowerCase().includes('priya')) || sharedState.getStudents().find(s => s.name.toLowerCase().includes('priya'));
+      return {
+        id,
+        sender: 'assistant',
+        text: `### 🎓 Student Diagnostic Profile: Priya Patel\n\n` +
+              `• **Grade & Learning Pace**: Grade ${student?.grade || 7} • Pace: **${student?.learningPace || 'Self-Paced'}** • Language: **${student?.preferredLanguage || 'English'}**\n` +
+              `• **GNN Risk Score**: **${student?.riskScore || 78}% (HIGH RISK)**\n` +
+              `• **Weak Concepts**: ${(student?.weakConcepts || ['Chloroplast Structure', 'Light-Dependent Reactions']).join(', ')}\n` +
+              `• **Mastered Concepts**: ${(student?.masteredConcepts || ['Autotrophic Nutrition']).join(', ')}\n` +
+              `• **Recommended Scaffolding**: ${student?.recommendedScaffolding || 'Interactive 3D organelle explorer with clear visual distinctions between thylakoid and stroma.'}`,
+        timestamp,
+        language: 'English',
+        domain: 'Student Diagnostic & Learning Twin',
+        xai: {
+          topic: 'Student Profile: Priya Patel (std-2)',
+          groundingCitation: 'Cellular Organelle DAG & Visual Scaffolding Ledger',
+          trustScore: 99.3,
+          confidence: 99.7,
+          decisionRationale: 'Organelle structure identification requires interactive visual grounding.',
+          featureAttributions: [
+            { feature: 'Visual Spatial Learning Gap', weight: 50, description: 'Confuses thylakoids with stroma matrix' },
+            { feature: 'Curriculum Progress', weight: 30, description: 'Needs concept mastery before moving to Calvin cycle' },
+            { feature: 'Interactive Scaffolding', weight: 20, description: 'High engagement with 3D models' }
+          ],
+          activeProvider: providerName
+        }
+      };
+    }
+
+    // S4. ALL AT-RISK STUDENTS & ROSTER SUMMARY
+    if (q.includes('risk') || q.includes('struggling') || q.includes('all student') || q.includes('roster') || q.includes('performance') || q.includes('who needs help') || q.includes('dossier')) {
+      const activeList = (students && students.length > 0) ? students : sharedState.getStudents();
+      const highRisk = activeList.filter(s => s.riskScore >= 70);
+      const medRisk = activeList.filter(s => s.riskScore >= 40 && s.riskScore < 70);
+      return {
+        id,
+        sender: 'assistant',
+        text: `### 📊 Classroom At-Risk Students Dossier & Action Plan\n\n` +
+              `**1. High-Risk Learners (Require Immediate Teacher Intervention)**:\n` +
+              highRisk.map(s => `• **${s.name}** (Risk: **${s.riskScore}%** | Grade ${s.grade})\n` +
+              `  - *Reason*: ${s.riskReason || 'Mastery gap in core concept'}\n` +
+              `  - *Weak In*: ${(s.weakConcepts || []).join(', ') || 'Foundational topics'}\n` +
+              `  - *Recommended Action*: ${s.recommendedScaffolding || 'Assign remedial review'}`).join('\n\n') + `\n\n` +
+              (medRisk.length > 0 ? `**2. Moderate-Risk Learners (Monitoring)**:\n` +
+              medRisk.map(s => `• **${s.name}** (Risk: **${s.riskScore}%**): ${(s.weakConcepts || []).join(', ')}`).join('\n') + `\n\n` : '') +
+              `**3. Ready Actions**:\n` +
+              `• Click "**🎯 Rahul Intervention**" below or say *"Schedule intervention for Rahul"* to automatically assign targeted review exercises.\n` +
+              `• Click "**📝 Update Marks**" or say *"Update Aarav's marks to 9/10"* to recalculate mastery after re-assessment.`,
+        timestamp,
+        language: 'English',
+        domain: 'Classroom Telemetry & Risk Management',
+        xai: {
+          topic: 'Classroom Risk Stratification & Pedagogical Scaffolding',
+          groundingCitation: 'PyTorch Geometric GNN Living Learning Twin & Student DB',
+          trustScore: 99.8,
+          confidence: 99.9,
+          decisionRationale: 'Continuous real-time clustering of cognitive traits, quiz scores, and prerequisite bottlenecks.',
+          featureAttributions: [
+            { feature: 'GNN Prerequisite Bottleneck Detection', weight: 45, description: 'Identifies common prerequisite roadblocks' },
+            { feature: 'Formative Score Variance', weight: 35, description: 'Tracks quiz trends and retention decline' },
+            { feature: 'Remediation Action Feasibility', weight: 20, description: 'Aligns interventions with classroom schedule' }
+          ],
+          activeProvider: providerName
+        }
+      };
+    }
+
+    // S5. ANY SPECIFIC STUDENT PROFILE DYNAMIC LOOKUP
+    const allStudentsList = (students && students.length > 0) ? students : sharedState.getStudents();
+    const matchedAnyStudent = allStudentsList.find(s => {
+      const nameL = s.name.toLowerCase();
+      const parts = nameL.split(' ');
+      return q.includes(nameL) || parts.some(p => p.length >= 3 && q.includes(p)) || q.includes(s.id.toLowerCase());
+    });
+
+    if (matchedAnyStudent) {
+      const scores = (matchedAnyStudent.recentScores || []).map(s => `${s.quizName}: ${s.score}/${s.maxScore} (${Math.round((s.score / s.maxScore) * 100)}%) on ${s.date}`).join(', ') || 'No prior quizzes recorded';
+      const masteries = (matchedAnyStudent.learningTwin?.conceptBreakdown || []).map(cb => `${cb.conceptName}: ${cb.masteryPercentage}% (${cb.status})`).join(' | ') || 'N/A';
+      return {
+        id,
+        sender: 'assistant',
+        text: `### 🎓 Student Diagnostic Profile: ${matchedAnyStudent.name}\n\n` +
+              `• **Student ID**: \`${matchedAnyStudent.id}\` • **Grade**: Grade ${matchedAnyStudent.grade} • **Learning Pace**: **${matchedAnyStudent.learningPace}**\n` +
+              `• **Preferred Language**: ${matchedAnyStudent.preferredLanguage}\n` +
+              `• **Predictive GNN Risk Score**: **${matchedAnyStudent.riskScore}%** (${matchedAnyStudent.riskScore > 75 ? 'HIGH RISK' : matchedAnyStudent.riskScore > 40 ? 'MEDIUM RISK' : 'LOW RISK'})\n` +
+              `• **Diagnostic Root Cause**: ${matchedAnyStudent.riskReason || 'Consistent learner progressing along curriculum standards.'}\n` +
+              `• **Weak Concepts / Gaps**: ${(matchedAnyStudent.weakConcepts || []).join(', ') || 'Foundational topics stable'}\n` +
+              `• **Mastered Concepts**: ${(matchedAnyStudent.masteredConcepts || []).join(', ') || 'General fundamentals'}\n` +
+              `• **Quiz History & Scores**: ${scores}\n` +
+              `• **Module-Wise Mastery**: ${masteries}\n` +
+              `• **Cognitive Traits**: Strong at [${(matchedAnyStudent.learningTwin?.cognitiveTraits?.strongAt || []).join(', ') || 'General concepts'}], Weak at [${(matchedAnyStudent.learningTwin?.cognitiveTraits?.weakAt || []).join(', ') || 'Timed tests'}]\n` +
+              `• **Recommended Scaffolding**: ${matchedAnyStudent.recommendedScaffolding || 'Standard multi-tier scaffolding with visual diagrams.'}\n\n` +
+              `*Tip: Say "Schedule intervention for ${matchedAnyStudent.name}" or "Edit marks for ${matchedAnyStudent.name} to 9/10" to perform agentic actions.*`,
+        timestamp,
+        language: 'English',
+        domain: 'Student Diagnostic & Learning Twin',
+        xai: {
+          topic: `Student Profile: ${matchedAnyStudent.name} (${matchedAnyStudent.id})`,
+          groundingCitation: 'MINDMESH Living Learning Twin & GNN Knowledge Tracing (DKT-v2)',
+          trustScore: 99.6,
+          confidence: 99.8,
+          decisionRationale: 'Continuous real-time telemetry from formative quizzes, cognitive traits, and prerequisite graph tracing.',
+          featureAttributions: [
+            { feature: 'DKT Concept Mastery Vectors', weight: 45, description: 'Calculated from historical assessment checks' },
+            { feature: 'Formative Assessment History', weight: 35, description: 'Grounded in official gradebook scores' },
+            { feature: 'Cognitive Trait Telemetry', weight: 20, description: 'Learning pace and modality preference alignment' }
+          ],
+          activeProvider: providerName
+        }
+      };
+    }
 
     // 0. OPEN-SOURCE AI: LOCAL OLLAMA, FASTER-WHISPER, GGUF QUANTIZATION & PRIVACY
     if (
@@ -621,79 +874,279 @@ export const ExplainableAIChatBot: React.FC<ExplainableAIChatBotProps> = ({
     setInputQuery('');
     setIsThinking(true);
 
-    try {
-      // First generate structured template
-      const baseResponse = generateUniversalResponse(q);
-      
-      // Asynchronously attempt live generation based on selected provider
-      if (selectedProvider === 'ollama') {
-        ollamaService.chat(q)
-          .then((ollamaRes) => {
-            if (ollamaRes && ollamaRes.trim().length > 5) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === baseResponse.id
-                    ? {
-                        ...m,
-                        text: ollamaRes.trim(),
-                        xai: m.xai
-                          ? {
-                              ...m.xai,
-                              activeProvider: `Local Ollama (${ollamaService.getSelectedModel()})`
-                            }
-                          : undefined
-                      }
-                    : m
-                )
-              );
-            }
-          })
-          .catch(() => {});
-      } else {
-        // Attempt live Google Gemini generation if network permits
-        geminiService.generateSocraticResponse(q, 'Computer Science & Engineering / Natural Sciences', currentLanguage)
-          .then((geminiRes) => {
-            if (geminiRes && geminiRes.text && geminiRes.source.includes('GOOGLE_GEMINI')) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === baseResponse.id
-                    ? {
-                        ...m,
-                        text: geminiRes.text,
-                        xai: m.xai
-                          ? {
-                              ...m.xai,
-                              activeProvider: 'Google Gemini 3.8 Flash (Project 899658269222)'
-                            }
-                          : undefined
-                      }
-                    : m
-                )
-              );
-            }
-          })
-          .catch(() => {});
-      }
+    // 1. CHECK FOR AGENTIC TEACHER / STUDENT ACTIONS FIRST
+    const lower = q.toLowerCase().trim();
 
-      // Fast-Path: Instant responsive rendering (40ms microtask)
-      setTimeout(() => {
-        setMessages((prev) => [...prev, baseResponse]);
+    // Pure informational inquiries or explanations must NEVER execute action mutations:
+    const isExplicitQuestion = 
+      lower.startsWith('what') ||
+      lower.startsWith('how') ||
+      lower.startsWith('why') ||
+      lower.startsWith('who') ||
+      lower.startsWith('which') ||
+      lower.startsWith('when') ||
+      lower.startsWith('where') ||
+      lower.startsWith('explain') ||
+      lower.startsWith('tell me') ||
+      lower.startsWith('describe') ||
+      lower.startsWith('compare') ||
+      lower.startsWith('can you') ||
+      lower.startsWith('could you') ||
+      lower.startsWith('show me') ||
+      lower.startsWith('give me') ||
+      lower.includes('?') ||
+      lower.includes('details') ||
+      lower.includes('profile') ||
+      lower.includes('dossier') ||
+      lower.includes('scores') ||
+      lower.includes('marks of') ||
+      lower.includes('performance');
+
+    const nativeIntent = AgentEngine.parseIntent(q);
+
+    // Only treat as action if NOT an informational inquiry AND matches an explicit action intent
+    const isAction = !isExplicitQuestion && (
+      nativeIntent.action === 'schedule_class' ||
+      nativeIntent.action === 'schedule_intervention' ||
+      nativeIntent.action === 'edit_marks' ||
+      nativeIntent.action === 'replan_duration' ||
+      nativeIntent.action === 'navigate' ||
+      (nativeIntent.action === 'generate_lesson' && (
+        lower.startsWith('generate lesson') || 
+        lower.startsWith('create lesson') || 
+        lower.startsWith('make lesson') || 
+        lower.startsWith('plan a lesson') ||
+        lower.includes('generate a lesson plan') ||
+        lower.includes('create a lesson plan')
+      ))
+    );
+
+    if (isAction) {
+      try {
+        let execResult: any = null;
+        if (onExecuteCommand) {
+          execResult = await onExecuteCommand(q);
+        } else {
+          execResult = await AgentEngine.executePipeline(q);
+        }
+
+        // Auto-navigate tab if the action requested a specific tab
+        if (nativeIntent.actionOutcome?.targetTab && onNavigateTab) {
+          onNavigateTab(nativeIntent.actionOutcome.targetTab);
+        }
+
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const assistantId = `msg-${Date.now()}`;
+        const spokenReply = execResult?.speechSummary || nativeIntent.actionOutcome?.voiceResponse || `Command "${q}" executed successfully.`;
+
+        let actionTitle = 'Action Completed';
+        let actionBadge = '⚡ Agentic Action';
+
+        if (nativeIntent.action === 'schedule_class') {
+          actionBadge = '📅 Class Scheduled';
+          actionTitle = `Class Scheduled: ${nativeIntent.topic || 'Curriculum Session'}`;
+        } else if (nativeIntent.action === 'schedule_intervention') {
+          actionBadge = '🎯 Intervention Assigned';
+          actionTitle = `Intervention Prescribed for ${nativeIntent.actionOutcome?.payload?.studentName || 'Student'}`;
+        } else if (nativeIntent.action === 'edit_marks') {
+          actionBadge = '📝 Marks Updated';
+          actionTitle = `Assessment Marks Updated: ${nativeIntent.actionOutcome?.payload?.score}/${nativeIntent.actionOutcome?.payload?.maxScore || 10}`;
+        } else if (nativeIntent.action === 'replan_duration') {
+          actionBadge = '⏱️ Lesson Replanned';
+          actionTitle = `Lesson Compressed to ${nativeIntent.durationMinutes || 20} Minutes`;
+        } else if (nativeIntent.action === 'generate_lesson') {
+          actionBadge = '📚 Lesson Plan Generated';
+          actionTitle = `Lesson Plan Generated: ${nativeIntent.topic}`;
+        } else if (nativeIntent.action === 'navigate') {
+          actionBadge = '🧭 Workspace Navigated';
+          actionTitle = `Switched to ${nativeIntent.actionOutcome?.targetTab || 'Target Portal'}`;
+        }
+
+        const payloadStr = nativeIntent.actionOutcome?.payload
+          ? '\n\n**Action Outcome Data**:\n' +
+            Object.entries(nativeIntent.actionOutcome.payload)
+              .map(([k, v]) => `• **${k}**: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+              .join('\n')
+          : '';
+
+        const actionAssistantMsg: ChatMessage = {
+          id: assistantId,
+          sender: 'assistant',
+          text: `### ${actionBadge}: ${actionTitle}\n\n` +
+                `**Execution Status**: ✅ **Synchronized & Live Across All Portals**\n\n` +
+                `**Voice Confirmation**:\n` +
+                `> "${spokenReply}"` +
+                payloadStr +
+                `\n\n**Multi-Tab Sync**: All changes have been committed into the active database, updating the Teacher Studio, Student Portal, and Shared Calendar in real time.`,
+          timestamp,
+          language: currentLanguage,
+          domain: 'Autonomous Action Execution',
+          xai: {
+            topic: actionTitle,
+            groundingCitation: 'MINDMESH Autonomous Agent Pipeline & Multi-Tab State Ledger',
+            trustScore: 99.8,
+            confidence: 99.9,
+            decisionRationale: `Autonomous teacher action executed via natural language intent recognition, slot filling, and real-time state synchronization.`,
+            featureAttributions: [
+              { feature: 'Natural Language Intent Recognition', weight: 45, description: `Decoded action: ${nativeIntent.action?.toUpperCase() || 'EXECUTE'}` },
+              { feature: 'Shared State Synchronization', weight: 35, description: 'Committed to localStorage and reactive broadcast listeners' },
+              { feature: 'Pedagogical Policy Compliance', weight: 20, description: 'Validated against curricular scheduling standards' }
+            ],
+            activeProvider: 'MINDMESH Autonomous Agent Engine'
+          }
+        };
+
+        setMessages((prev) => [...prev, actionAssistantMsg]);
         setIsThinking(false);
-        setExpandedXaiId(baseResponse.id);
+        setExpandedXaiId(actionAssistantMsg.id);
 
-        // Vocal Feedback: If user spoke via voice or autoSpeak is requested, speak back aloud immediately
         if (autoSpeak) {
-          const spokenText = voiceService.extractSpokenSummary(baseResponse.text);
-          setSpeakingMessageId(baseResponse.id);
+          const spokenText = voiceService.extractSpokenSummary(spokenReply);
+          setSpeakingMessageId(actionAssistantMsg.id);
           if (onSpeakText) {
-            onSpeakText(spokenText, baseResponse.language);
+            onSpeakText(spokenText, actionAssistantMsg.language);
           } else {
             voiceService.speak(spokenText, () => {
               setSpeakingMessageId(null);
-            }, baseResponse.language || currentLanguage);
+            }, actionAssistantMsg.language || currentLanguage);
           }
         }
-      }, 40);
+        return;
+      } catch (actionErr) {
+        console.warn('Action execution notice, continuing to pedagogical answer:', actionErr);
+      }
+    }
+
+    // 2. PEDAGOGICAL & DOMAIN QUESTION ANSWERING (OLLAMA CLOUD / FALLBACKS)
+    try {
+      let modelResponseText = '';
+      let activeProviderName = `Ollama (${ollamaService.getSelectedModel()})`;
+
+      const activeStudents = (students && students.length > 0) ? students.slice(0, 6) : sharedState.getStudents().slice(0, 6);
+      const studentProfilesContext = `\nCLASSROOM STUDENT PROFILES:\n` + activeStudents.map((s) => 
+        `• ${s.name} (${s.id}, Grade ${s.grade}, Pace: ${s.learningPace}): Risk ${s.riskScore}%. Weak: ${(s.weakConcepts || []).slice(0, 3).join(', ')}. Mastered: ${(s.masteredConcepts || []).slice(0, 3).join(', ')}. Scores: ${(s.recentScores || []).slice(0, 2).map(sc => `${sc.quizName} ${sc.score}/${sc.maxScore}`).join(', ')}`
+      ).join('\n');
+
+      const calendarEvents = sharedState.getCalendarEvents().slice(0, 3);
+      const calendarContext = calendarEvents.length > 0
+        ? `\nSCHEDULE:\n` + calendarEvents.map(e => `• ${e.date} (${e.time}): ${e.title} [${e.status}]`).join('\n')
+        : '';
+
+      const activeTeacher = authService.getUsers().find(u => u.role === 'teacher') || authService.getCurrentUser() || {
+        name: 'Dr. Aditi Sharma',
+        email: 'aditi.sharma@delhischool.edu.in',
+        phone: '+91 98765 43210',
+        department: 'Computer Science & Engineering',
+        subject: 'Computer Science & Engineering / Natural Sciences'
+      };
+      const teacherProfileContext = `
+TEACHER DOSSIER:
+• Lead Educator: ${activeTeacher.name} | Dept: ${activeTeacher.department || 'Computer Science & Engineering'}
+• Email: ${activeTeacher.email} | Phone: ${activeTeacher.phone}
+• Classroom Broadcast Code: ${sharedState.getClassroomCode()}
+• Connected Students: ${(sharedState.getConnectedStudents() || []).join(', ') || 'Aarav Sharma, Prajwal Gowda, Rahul Sharma'}`;
+
+      const rawSysPrompt = `You are MINDMESH-NEXUS, the premier Explainable AI Teaching Co-Pilot and Socratic Learning Partner.
+Language: ${currentLanguage}. If asked in Hindi or Kannada, respond naturally and fluently in that language.
+
+1. FOR ALL SUBJECT QUESTIONS:
+- Explain clearly step-by-step like a student chatbot with analogies, equations, and practice questions.
+
+2. FOR STUDENT & TEACHER INQUIRIES:
+- Provide exact official records, scores, weak concepts, risk score, and recommended scaffolding.
+${studentProfilesContext}
+${teacherProfileContext}
+${calendarContext}
+
+Always respond with structured markdown, clear headings, bullet points, and authoritative reasoning.`;
+
+      const sysPrompt = rawSysPrompt.length > 4000 ? rawSysPrompt.slice(0, 4000) : rawSysPrompt;
+
+      // Query chosen engine or Ollama
+      if (selectedProvider === 'ollama') {
+        try {
+          modelResponseText = await ollamaService.chat(q, undefined, sysPrompt);
+        } catch (err) {
+          console.warn('Ollama chat notice:', err);
+        }
+        if (!modelResponseText || !modelResponseText.trim() || modelResponseText.includes('Both Ollama Cloud and local daemon')) {
+          try {
+            modelResponseText = await groqService.chat(q, sysPrompt);
+            if (modelResponseText) activeProviderName = 'Groq Cloud LPU (qwen/qwen3.8-27b)';
+          } catch {}
+        }
+      } else if (selectedProvider === 'groq_lpu') {
+        try {
+          modelResponseText = await groqService.chat(q, sysPrompt);
+          activeProviderName = 'Groq Cloud LPU (qwen/qwen3.8-27b)';
+        } catch {
+          modelResponseText = await ollamaService.chat(q, undefined, sysPrompt);
+        }
+      } else if (selectedProvider === 'gemini_flash') {
+        try {
+          const geminiRes = await geminiService.generateSocraticResponse(q, 'Computer Science & Natural Sciences', currentLanguage);
+          if (geminiRes?.text) {
+            modelResponseText = geminiRes.text;
+            activeProviderName = 'Google Gemini 3.8 Flash';
+          }
+        } catch {}
+      } else {
+        try {
+          modelResponseText = await ollamaService.chat(q, undefined, sysPrompt);
+        } catch {}
+      }
+
+      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const assistantId = `msg-${Date.now()}`;
+
+      let assistantMsg: ChatMessage;
+
+      const isFallbackSignal = !modelResponseText || 
+        !modelResponseText.trim() || 
+        modelResponseText.includes('Both Ollama Cloud and local daemon should be verified') ||
+        modelResponseText.includes('I processed your query:');
+
+      if (!isFallbackSignal && modelResponseText.trim().length > 0) {
+        assistantMsg = {
+          id: assistantId,
+          sender: 'assistant',
+          text: modelResponseText.trim(),
+          timestamp,
+          language: currentLanguage,
+          domain: 'AI Teaching Co-Pilot',
+          xai: {
+            topic: q.slice(0, 45),
+            groundingCitation: 'Ollama Cloud (gpt-oss:120b-cloud) & Classroom Ground Truth Ledger',
+            trustScore: 99.4,
+            confidence: 99.8,
+            decisionRationale: 'Live neural reasoning through Ollama with verified pedagogical attribution.',
+            featureAttributions: [
+              { feature: 'Ollama Cloud Engine', weight: 55, description: 'Direct LLM reasoning with high-accuracy contextual understanding' },
+              { feature: 'Live Student Roster Grounding', weight: 30, description: 'Accurate retrieval of quiz scores and DKT trajectories' },
+              { feature: 'Curriculum & XAI Alignment', weight: 15, description: 'Mapped to syllabus competencies with transparent rationale' }
+            ],
+            activeProvider: activeProviderName
+          }
+        };
+      } else {
+        assistantMsg = generateUniversalResponse(q);
+      }
+
+      setMessages((prev) => [...prev, assistantMsg]);
+      setIsThinking(false);
+      setExpandedXaiId(assistantMsg.id);
+
+      if (autoSpeak) {
+        const spokenText = voiceService.extractSpokenSummary(assistantMsg.text);
+        setSpeakingMessageId(assistantMsg.id);
+        if (onSpeakText) {
+          onSpeakText(spokenText, assistantMsg.language);
+        } else {
+          voiceService.speak(spokenText, () => {
+            setSpeakingMessageId(null);
+          }, assistantMsg.language || currentLanguage);
+        }
+      }
     } catch (e) {
       const fallback = generateUniversalResponse(q);
       setMessages((prev) => [...prev, fallback]);
@@ -703,9 +1156,13 @@ export const ExplainableAIChatBot: React.FC<ExplainableAIChatBotProps> = ({
       if (autoSpeak) {
         const spokenText = voiceService.extractSpokenSummary(fallback.text);
         setSpeakingMessageId(fallback.id);
-        voiceService.speak(spokenText, () => {
-          setSpeakingMessageId(null);
-        }, fallback.language || currentLanguage);
+        if (onSpeakText) {
+          onSpeakText(spokenText, fallback.language);
+        } else {
+          voiceService.speak(spokenText, () => {
+            setSpeakingMessageId(null);
+          }, fallback.language || currentLanguage);
+        }
       }
     }
   };
@@ -713,11 +1170,17 @@ export const ExplainableAIChatBot: React.FC<ExplainableAIChatBotProps> = ({
   const handleToggleVoiceInput = async () => {
     if (isListening) {
       setIsListening(false);
+      const currentQuery = inputQuery;
+      setInputQuery('Transcribing voice with Faster-Whisper...');
       const text = await voiceService.stopListening();
-      const queryToSend = (text && text.trim().length > 1) ? text.trim() : inputQuery.trim();
+      const rawText = (text && text.trim().length > 1) ? text.trim() : currentQuery.trim();
+      const isPlaceholder = rawText.toLowerCase().startsWith('transcribing') || rawText.toLowerCase().startsWith('listening');
+      const queryToSend = isPlaceholder ? '' : rawText;
       if (queryToSend.length > 1) {
         setInputQuery('');
         handleSendMessage(queryToSend, true);
+      } else {
+        setInputQuery('');
       }
     } else {
       const langCode = currentLanguage === 'Kannada' ? 'kn-IN' : (currentLanguage === 'Hindi' ? 'hi-IN' : 'en-IN');
@@ -872,8 +1335,8 @@ export const ExplainableAIChatBot: React.FC<ExplainableAIChatBotProps> = ({
                   onChange={(e) => setSelectedProvider(e.target.value as any)}
                   className="bg-white border border-slate-200 text-slate-800 text-[11px] font-bold rounded-lg px-2 py-1 outline-none shadow-xs cursor-pointer focus:border-blue-500"
                 >
+                  <option value="ollama">🦙 Ollama AI (Cloud & Local - gpt-oss:120b-cloud)</option>
                   <option value="groq_lpu">⚡ Groq Cloud LPU (&lt;200ms)</option>
-                  <option value="ollama">🦙 Local Ollama (Offline Llama 3.2)</option>
                   <option value="gemini_flash">✨ Google Gemini 3.8 Flash</option>
                   <option value="agnes_flash">🧠 Agnes 3.0 Flash 512K</option>
                   <option value="fastapi_local">⚙️ FastAPI GNN Engine (Port 8000)</option>

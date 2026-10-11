@@ -55,6 +55,8 @@ import { apiClient } from '../services/apiClient';
 import { CalendarView } from './CalendarView';
 import { FormativeQuizEngine } from './FormativeQuizEngine';
 import { DocumentReaderModal } from './DocumentReaderModal';
+import { ollamaService } from '../services/ollamaService';
+import { voiceService } from '../services/voiceService';
 
 interface StudentDashboardProps {
   lessonPlan: LessonPlan;
@@ -123,6 +125,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   
   // Voice Interaction Hub State
   const [isVoiceActive, setIsVoiceActive] = useState<boolean>(false);
+  const [isStudentVoiceListening, setIsStudentVoiceListening] = useState<boolean>(false);
+  const [isStudentChatThinking, setIsStudentChatThinking] = useState<boolean>(false);
   const [studentSpokenInput, setStudentSpokenInput] = useState<string>('');
   const [voiceMessages, setVoiceMessages] = useState<Array<{ sender: 'ai' | 'student'; text: string; timestamp: string }>>(() => {
     const welcomeText = selectedLanguage === 'Kannada'
@@ -305,49 +309,169 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
     }
   };
 
-  const handleSendVoiceQuestion = (text: string) => {
-    if (!text.trim()) return;
+  const handleToggleStudentVoice = async () => {
+    if (isStudentVoiceListening) {
+      setIsStudentVoiceListening(false);
+      setStudentSpokenInput('Transcribing voice with Faster-Whisper...');
+      const text = await voiceService.stopListening();
+      const rawText = (text && text.trim().length > 1) ? text.trim() : studentSpokenInput.trim();
+      const isPlaceholder = rawText.toLowerCase().startsWith('transcribing') || rawText.toLowerCase().startsWith('listening');
+      const textToSend = isPlaceholder ? '' : rawText;
+      if (textToSend.length > 1) {
+        setStudentSpokenInput('');
+        handleSendVoiceQuestion(textToSend);
+      } else {
+        setStudentSpokenInput('');
+      }
+    } else {
+      const langCode = studentLanguage === 'Kannada' ? 'kn-IN' : (studentLanguage === 'Hindi' ? 'hi-IN' : 'en-IN');
+      setStudentSpokenInput('');
+      voiceService.setCallbacks(
+        (text: string, isFinal: boolean) => {
+          setStudentSpokenInput(text);
+          if (isFinal && text.trim().length > 2) {
+            handleSendVoiceQuestion(text.trim());
+            setIsStudentVoiceListening(false);
+          }
+        },
+        (listening: boolean) => {
+          setIsStudentVoiceListening(listening);
+        }
+      );
+      setIsStudentVoiceListening(true);
+      await voiceService.startListening(langCode);
+    }
+  };
+
+  const handleSendVoiceQuestion = async (text: string) => {
+    if (!text.trim() || isStudentChatThinking) return;
     
     const userMsg = { sender: 'student' as const, text, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
     setVoiceMessages(prev => [...prev, userMsg]);
     setStudentSpokenInput('');
+    setIsStudentChatThinking(true);
 
-    // Socratic AI Voice response with intelligent fallback
-    setTimeout(() => {
+    try {
+      // Build comprehensive official dossier of current student for Ollama
+      const studentScoresList = (currentStudent.recentScores && currentStudent.recentScores.length > 0)
+        ? currentStudent.recentScores.map(s => `  • ${s.quizName}: ${s.score}/${s.maxScore} (${Math.round((s.score / s.maxScore) * 100)}%) on ${s.date}`).join('\n')
+        : '  • No prior quizzes recorded yet.';
+
+      const moduleMasteriesList = (currentStudent.learningTwin?.conceptBreakdown && currentStudent.learningTwin.conceptBreakdown.length > 0)
+        ? currentStudent.learningTwin.conceptBreakdown.map(c => `  • ${c.conceptName} [${c.category || 'Core'}]: ${c.masteryPercentage}% Mastery (${c.status.toUpperCase()}, Trend: ${c.trend || 'stable'})`).join('\n')
+        : '  • Module baseline mastery: 75% on track.';
+
+      const weakConceptsList = (currentStudent.weakConcepts && currentStudent.weakConcepts.length > 0)
+        ? currentStudent.weakConcepts.map(w => `  • ${w}`).join('\n')
+        : '  • None currently flagged as weak.';
+
+      const masteredConceptsList = (currentStudent.masteredConcepts && currentStudent.masteredConcepts.length > 0)
+        ? currentStudent.masteredConcepts.map(m => `  • ${m}`).join('\n')
+        : '  • Foundational concepts mastered.';
+
+      const cognitiveTraits = currentStudent.learningTwin?.cognitiveTraits;
+      const cognitiveInfo = cognitiveTraits
+        ? `Strengths: ${(cognitiveTraits.strongAt || []).join(', ') || 'Conceptual intuition'}\nWeaknesses: ${(cognitiveTraits.weakAt || []).join(', ') || 'Multi-step calculations'}\nModality Preference: ${cognitiveTraits.modalityPreference || 'Visual and voice interactive'}`
+        : 'Learns well through step-by-step visual and voice explanations.';
+
+      const studentProfileDossier = `
+=====================================================
+OFFICIAL STUDENT DOSSIER & REAL-TIME PERFORMANCE DATA:
+=====================================================
+• Student Name: ${currentStudent.name}
+• Student ID / USN: ${currentStudent.id}
+• Grade / Academic Level: Grade ${currentStudent.grade}
+• Learning Pace: ${currentStudent.learningPace}
+• Preferred Language: ${studentLanguage} (${currentStudent.preferredLanguage})
+• Predictive Risk Score: ${currentStudent.riskScore}% (${currentStudent.riskScore > 75 ? 'HIGH RISK' : currentStudent.riskScore > 40 ? 'MEDIUM RISK' : 'LOW RISK'})
+• Risk Diagnostic Reason: ${currentStudent.riskReason || 'Active learner consistently on track.'}
+• Recommended Pedagogical Scaffolding: ${currentStudent.recommendedScaffolding || 'Standard multi-phase scaffolding.'}
+
+ACADEMIC SCORES & QUIZ RESULTS:
+${studentScoresList}
+
+MODULE-WISE CONCEPT MASTERY:
+${moduleMasteriesList}
+
+WEAK / BOTTLENECK CONCEPTS (Needs Practice):
+${weakConceptsList}
+
+MASTERED CONCEPTS:
+${masteredConceptsList}
+
+COGNITIVE TRAITS:
+${cognitiveInfo}
+
+ENGAGEMENT & TELEMETRY:
+• Study Streak: 14 Consecutive Days Active
+• Total Knowledge XP: 3,850 XP
+• Cohort Rank: Top 4% (#3 in Cohort)
+• Current Live Quiz Session: ${isQuizSubmitted ? `Completed with score: ${calculateScore()}/${questions.length} (${Math.round((calculateScore() / questions.length) * 100)}%)` : `${currentQIndex + 1}/${questions.length} In Progress`}
+${assessments && assessments.length > 0 ? `\nRECORDED ASSESSMENTS:\n` + assessments.map(a => `  • ${a.topic}: ${a.score}/${a.maxScore} (${a.masteryPercentage}%) on ${a.date} [Mode: ${a.mode}]`).join('\n') : ''}
+${interventions && interventions.length > 0 ? `\nACTIVE INTERVENTIONS:\n` + interventions.map(i => `  • ${i.concept || i.topic} - Status: ${i.status} (${i.reviewNotes})`).join('\n') : ''}
+=====================================================`;
+
+      const sysPrompt = `You are MINDMESH-NEXUS, the dedicated personal Socratic AI Tutor & Learning Twin for student ${currentStudent.name}.
+You have direct, complete access to ${currentStudent.name}'s official academic records, test results, module-wise masteries, weak concepts, and study telemetry below:
+
+${studentProfileDossier}
+
+IMPORTANT INSTRUCTIONS:
+1. When ${currentStudent.name} asks about their performance, quiz scores, test results, marks, weak concepts, risk score, module-wise masteries, rank, XP, streak, or how to improve, cite the exact figures, quiz names, percentages, and dates from their dossier.
+2. When ${currentStudent.name} asks academic or conceptual questions (e.g. Science, Photosynthesis, Stomata, Computer Networks, TCP, etc.), explain clearly and pedagogically suited to their learning pace (${currentStudent.learningPace}) and preferred language (${studentLanguage}).
+3. Always respond naturally and fluently in ${studentLanguage}.
+4. Be encouraging, warm, and inspiring.`;
+
+      const prompt = `Student question: "${text}". Answer in ${studentLanguage}:`;
       let aiReply = '';
-      const lower = text.toLowerCase();
-      if (lower.includes('stomata') || lower.includes('gate') || lower.includes('pore') || lower.includes('ಪತ್ರರಂಧ್ರ')) {
-        if (studentLanguage === 'Kannada') {
-          aiReply = `ಖಂಡಿತ ${currentStudent.name}! ಪತ್ರರಂಧ್ರಗಳು (Stomata) ಎಲೆಗಳ ಸೂಕ್ಷ್ಮ ಬಾಗಿಲುಗಳು, ಇವು CO2 ಅನ್ನು ಒಳಗೆ ತಂದು O2 ಅನ್ನು ಹೊರಬಿಡುತ್ತವೆ.`;
-        } else if (studentLanguage === 'Hindi') {
-          aiReply = `बिल्कुल सही ${currentStudent.name}! स्टोमेटा पत्तियों के छोटे दरवाजे हैं जो CO2 को अंदर लेते हैं और O2 छोड़ते हैं।`;
-        } else {
-          aiReply = `Spot on ${currentStudent.name}! Stomata act like microscopic automatic gates that open to let CO2 in and release Oxygen out.`;
+      try {
+        const modelAnswer = await ollamaService.chat(prompt, undefined, sysPrompt);
+        if (modelAnswer && modelAnswer.trim().length > 3) {
+          aiReply = modelAnswer.trim();
         }
-      } else if (lower.includes('slow start') || lower.includes('cwnd') || lower.includes('window') || lower.includes('tcp')) {
-        aiReply = `Great question ${currentStudent.name}! In Slow Start, cwnd doubles every RTT (*2 exponential growth) until ssthresh is reached. Think of it like a funnel doubling its water flow!`;
-      } else if (lower.includes('kitchen') || lower.includes('cook') || lower.includes('food') || lower.includes('ಅಡುಗೆ')) {
-        if (studentLanguage === 'Kannada') {
-          aiReply = `ಅದ್ಭುತ! ಕ್ಲೋರೋಪ್ಲಾಸ್ಟ್ ಸಸ್ಯದ ಅಡುಗೆಮನೆ, ಅಲ್ಲಿ ಸೂರ್ಯನ ಬೆಳಕು, ನೀರು ಮತ್ತು CO2 ಸೇರಿ ಗ್ಲೂಕೋಸ್ ತಯಾರಾಗುತ್ತವೆ.`;
-        } else if (studentLanguage === 'Hindi') {
-          aiReply = `शाबाश! क्लोरोप्लास्ट पौधे की रसोई है, जहाँ धूप, पानी और CO2 मिलकर ग्लूकोज बनाते हैं।`;
+      } catch (err) {
+        console.warn('Student Ollama chat notice:', err);
+      }
+
+      if (!aiReply) {
+        const lower = text.toLowerCase();
+        if (lower.includes('score') || lower.includes('result') || lower.includes('mark') || lower.includes('quiz') || lower.includes('performance') || lower.includes('how did i do') || lower.includes('ಅಂಕ') || lower.includes('ಫಲಿತಾಂಶ') || lower.includes('रिजल्ट') || lower.includes('नंबर') || lower.includes('स्कोर')) {
+          const scoresSummary = (currentStudent.recentScores || []).map(s => `${s.quizName}: ${s.score}/${s.maxScore} (${Math.round((s.score / s.maxScore) * 100)}%) on ${s.date}`).join(', ');
+          if (studentLanguage === 'Kannada') {
+            aiReply = `${currentStudent.name}, ನಿಮ್ಮ ಇತ್ತೀಚಿನ ರಸಪ್ರಶ್ನೆ ಅಂಕಗಳು: ${scoresSummary || 'ಯಾವುದೇ ಅಂಕಗಳಿಲ್ಲ'}. ನಿಮ್ಮ ರಿಸ್ಕ್ ಸ್ಕೋರ್ ${currentStudent.riskScore}% ಆಗಿದೆ. ದುರ್ಬಲ ಪರಿಕಲ್ಪನೆಗಳು: ${(currentStudent.weakConcepts || []).join(', ') || 'ಯಾವುದೂ ಇಲ್ಲ'}.`;
+          } else if (studentLanguage === 'Hindi') {
+            aiReply = `${currentStudent.name}, आपके हालिया क्विज परिणाम हैं: ${scoresSummary || 'कोई अंक उपलब्ध नहीं'}. आपका रिस्क स्कोर ${currentStudent.riskScore}% है. कमजोर विषय: ${(currentStudent.weakConcepts || []).join(', ') || 'कोई नहीं'}.`;
+          } else {
+            aiReply = `${currentStudent.name}, here are your official quiz scores: ${scoresSummary || 'No scores on record'}. Your predictive risk score is ${currentStudent.riskScore}%. Weak concepts to review: ${(currentStudent.weakConcepts || []).join(', ') || 'None'}.`;
+          }
+        } else if (lower.includes('stomata') || lower.includes('gate') || lower.includes('pore') || lower.includes('ಪತ್ರರಂಧ್ರ')) {
+          if (studentLanguage === 'Kannada') {
+            aiReply = `ಖಂಡಿತ ${currentStudent.name}! ಪತ್ರರಂಧ್ರಗಳು (Stomata) ಎಲೆಗಳ ಸೂಕ್ಷ್ಮ ಬಾಗಿಲುಗಳು, ಇವು CO2 ಅನ್ನು ಒಳಗೆ ತಂದು O2 ಅನ್ನು ಹೊರಬಿಡುತ್ತವೆ.`;
+          } else if (studentLanguage === 'Hindi') {
+            aiReply = `बिल्कुल सही ${currentStudent.name}! स्टोमेटा पत्तियों के छोटे दरवाजे हैं जो CO2 को अंदर लेते हैं और O2 छोड़ते हैं।`;
+          } else {
+            aiReply = `Spot on ${currentStudent.name}! Stomata act like microscopic automatic gates that open to let CO2 in and release Oxygen out.`;
+          }
+        } else if (lower.includes('slow start') || lower.includes('cwnd') || lower.includes('window') || lower.includes('tcp')) {
+          aiReply = `Great question ${currentStudent.name}! In Slow Start, cwnd doubles every RTT (*2 exponential growth) until ssthresh is reached.`;
         } else {
-          aiReply = `Awesome intuition! Chloroplasts are the solar chef stations cooking up Glucose food.`;
-        }
-      } else {
-        if (studentLanguage === 'Kannada') {
-          aiReply = `ತುಂಬಾ ಉತ್ತಮ ಪ್ರಶ್ನೆ! ಸೂರ್ಯನ ಬೆಳಕು ಎಲೆಯ ಮೇಲೆ ಬಿದ್ದಾಗ, ಕ್ಲೋರೋಫಿಲ್ ಆ ಶಕ್ತಿಯನ್ನು ಹೀರಿಕೊಳ್ಳುತ್ತದೆ. ಕತ್ತಲೆಯಲ್ಲಿ ಸಸ್ಯಗಳು ಆಹಾರ ತಯಾರಿಸಲು ಸಾಧ್ಯವೇ?`;
-        } else if (studentLanguage === 'Hindi') {
-          aiReply = `बहुत बढ़िया सवाल! जब धूप पत्ती पर पड़ती है, तो क्लोरोफिल ऊर्जा को पकड़ता है। क्या अंधेरे में यह प्रक्रिया संभव है?`;
-        } else {
-          aiReply = `Great question! When sunlight hits the leaf, chlorophyll traps radiant photons. Do you think plants can do this in the dark without light?`;
+          if (studentLanguage === 'Kannada') {
+            aiReply = `ತುಂಬಾ ಉತ್ತಮ ಪ್ರಶ್ನೆ ${currentStudent.name}! ಸೂರ್ಯನ ಬೆಳಕು ಎಲೆಯ ಮೇಲೆ ಬಿದ್ದಾಗ, ಕ್ಲೋರೋಫಿಲ್ ಆ ಶಕ್ತಿಯನ್ನು ಹೀರಿಕೊಳ್ಳುತ್ತದೆ.`;
+          } else if (studentLanguage === 'Hindi') {
+            aiReply = `बहुत बढ़िया सवाल ${currentStudent.name}! जब धूप पत्ती पर पड़ती है, तो क्लोरोफिल ऊर्जा को पकड़ता है।`;
+          } else {
+            aiReply = `Great question ${currentStudent.name}! In ${lessonPlan.topic}, sunlight and nutrients power photosynthesis.`;
+          }
         }
       }
 
       const aiMsg = { sender: 'ai' as const, text: aiReply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
       setVoiceMessages(prev => [...prev, aiMsg]);
+      setIsStudentChatThinking(false);
       onSpeakText(aiReply, studentLanguage);
-    }, 500);
+    } catch {
+      setIsStudentChatThinking(false);
+    }
   };
 
   const handleSelectOption = (optIndex: number) => {
@@ -1981,21 +2105,41 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       </div>
                     </div>
                   ))}
+                  {isStudentChatThinking && (
+                    <div className="flex justify-start">
+                      <div className="max-w-[85%] rounded-2xl p-3 text-xs leading-relaxed shadow-xs bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200 flex items-center space-x-2">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-spin" />
+                        <span className="text-slate-500 font-medium">Thinking with Ollama AI...</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Spoken Query Suggestions */}
                 <div className="flex flex-wrap gap-1.5 pb-2 pt-1 border-t border-slate-200/60">
                   <button
-                    onClick={() => handleSendVoiceQuestion('What is the role of stomata?')}
-                    className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 font-semibold transition-colors"
+                    onClick={() => handleSendVoiceQuestion('What are all my quiz scores, marks, and test results?')}
+                    className="text-[10px] px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                   >
-                    🍃 How do stomata open?
+                    📊 My Quiz Scores & Results
                   </button>
                   <button
-                    onClick={() => handleSendVoiceQuestion('Explain the plant kitchen analogy')}
-                    className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 font-semibold transition-colors"
+                    onClick={() => handleSendVoiceQuestion('What are my weak concepts and what is my predictive risk score?')}
+                    className="text-[10px] px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                   >
-                    🍳 Plant Kitchen Analogy
+                    🎯 Weak Concepts & Risk
+                  </button>
+                  <button
+                    onClick={() => handleSendVoiceQuestion('Give me my module-wise scores and concept mastery breakdown.')}
+                    className="text-[10px] px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    📈 Module-Wise Mastery
+                  </button>
+                  <button
+                    onClick={() => handleSendVoiceQuestion('What is the role of stomata in photosynthesis?')}
+                    className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    🍃 Role of Stomata
                   </button>
                 </div>
 
@@ -2011,21 +2155,25 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                     type="text"
                     value={studentSpokenInput}
                     onChange={(e) => setStudentSpokenInput(e.target.value)}
-                    placeholder="Ask a doubt or question..."
+                    placeholder={isStudentVoiceListening ? "Listening with Whisper... Speak now!" : "Ask a doubt or question..."}
                     className="w-full bg-slate-50 focus:bg-white border-2 border-slate-200 focus:border-indigo-500 rounded-xl pl-3 pr-20 py-2.5 text-xs text-slate-900 outline-none shadow-inner"
                   />
                   <div className="absolute right-1 flex items-center space-x-1">
                     <button
                       type="button"
-                      onClick={() => handleSendVoiceQuestion('What are stomata?')}
-                      className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 cursor-pointer"
-                      title="Voice Input"
+                      onClick={handleToggleStudentVoice}
+                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                        isStudentVoiceListening
+                          ? 'bg-rose-500 text-white animate-pulse shadow-md shadow-rose-500/40'
+                          : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                      }`}
+                      title={isStudentVoiceListening ? 'Stop Listening' : 'Speak with Voice (Whisper)'}
                     >
-                      <Mic className="w-3.5 h-3.5" />
+                      {isStudentVoiceListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
                     </button>
                     <button
                       type="submit"
-                      disabled={!studentSpokenInput.trim()}
+                      disabled={!studentSpokenInput.trim() || isStudentChatThinking}
                       className="btn-3d btn-3d-indigo p-1.5 rounded-lg text-white disabled:opacity-50 cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5" />
